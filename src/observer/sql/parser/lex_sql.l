@@ -112,6 +112,7 @@ INT                                     RETURN_TOKEN(INT_T);
 CHAR                                    RETURN_TOKEN(STRING_T);
 FLOAT                                   RETURN_TOKEN(FLOAT_T);
 VECTOR                                  RETURN_TOKEN(VECTOR_T);
+DATE                                 RETURN_TOKEN(DATE_T); ///date题
 LOAD                                    RETURN_TOKEN(LOAD);
 DATA                                    RETURN_TOKEN(DATA);
 INFILE                                  RETURN_TOKEN(INFILE);
@@ -138,6 +139,7 @@ ENCLOSED                                RETURN_TOKEN(ENCLOSED);
 "<"                                     RETURN_TOKEN(LT);
 ">="                                    RETURN_TOKEN(GE);
 ">"                                     RETURN_TOKEN(GT);
+
 
 "+" |
 "-" |

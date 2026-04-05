@@ -21,11 +21,11 @@ See the Mulan PSL v2 for more details. */
 #include "common/type/string_t.h"
 
 /**
- * @brief 属性的值
+ * @brief 属性的�?
  * @ingroup DataType
- * @details 与DataType，就是数据类型，配套完成各种算术运算、比较、类型转换等操作。这里同时记录了数据的值与类型。
- * 当需要对值做运算时，建议使用类似 Value::add 的操作而不是 DataType::add。在进行运算前，应该设置好结果的类型，
- * 比如进行两个INT类型的除法运算时，结果类型应该设置为FLOAT。
+ * @details 与DataType，就是数据类型，配套完成各种算术运算、比较、类型转换等操作。这里同时记录了数据的值与类型�?
+ * 当需要对值做运算时，建议使用类似 Value::add 的操作而不�? DataType::add。在进行运算前，应该设置好结果的类型�?
+ * 比如进行两个INT类型的除法运算时，结果类型应该设置为FLOAT�?
  */
 class Value final
 {
@@ -35,6 +35,7 @@ public:
   friend class FloatType;
   friend class BooleanType;
   friend class CharType;
+  friend class DateType;
   friend class VectorType;
 
   Value() = default;
@@ -104,7 +105,7 @@ public:
 
 public:
   /**
-   * 获取对应的值
+   * 获取对应的�?
    * 如果当前的类型与期望获取的类型不符，就会执行转换操作
    */
   int      get_int() const;
@@ -132,6 +133,6 @@ private:
     char   *pointer_value_;
   } value_ = {.int_value_ = 0};
 
-  /// 是否申请并占有内存, 目前对于 CHARS 类型 own_data_ 为true, 其余类型 own_data_ 为false
+  /// 是否申请并占有内�?, 目前对于 CHARS 类型 own_data_ 为true, 其余类型 own_data_ 为false
   bool own_data_ = false;
 };

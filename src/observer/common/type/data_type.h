@@ -22,8 +22,8 @@ class Column;
 /**
  * @brief 定义了数据类型相关的操作，比如比较运算、算术运算等
  * @defgroup DataType
- * @details 数据类型定义的算术运算中，比如 add、subtract 等，将按照当前数据类型设置最终结果值的类型。
- * 参与运算的参数类型不一定相同，不同的类型进行运算是否能够支持需要参考各个类型的实现。
+ * @details 数据类型定义的算术运算中，比�? add、subtract 等，将按照当前数据类型设置最终结果值的类型�?
+ * 参与运算的参数类型不一定相同，不同的类型进行运算是否能够支持需要参考各个类型的实现�?
  */
 
 class DataType
@@ -52,42 +52,42 @@ public:
   virtual int compare(const Column &left, const Column &right, int left_idx, int right_idx) const { return INT32_MAX; }
 
   /**
-   * @brief 计算 left + right，并将结果保存到 result 中
+   * @brief 计算 left + right，并将结果保存到 result �?
    */
   virtual RC add(const Value &left, const Value &right, Value &result) const { return RC::UNSUPPORTED; }
 
   /**
-   * @brief 计算 left - right，并将结果保存到 result 中
+   * @brief 计算 left - right，并将结果保存到 result �?
    */
   virtual RC subtract(const Value &left, const Value &right, Value &result) const { return RC::UNSUPPORTED; }
 
   /**
-   * @brief 计算 left * right，并将结果保存到 result 中
+   * @brief 计算 left * right，并将结果保存到 result �?
    */
   virtual RC multiply(const Value &left, const Value &right, Value &result) const { return RC::UNSUPPORTED; }
 
   /**
-   * @brief 计算 left / right，并将结果保存到 result 中
+   * @brief 计算 left / right，并将结果保存到 result �?
    */
   virtual RC divide(const Value &left, const Value &right, Value &result) const { return RC::UNSUPPORTED; }
 
   /**
-   * @brief 计算 -val，并将结果保存到 result 中
+   * @brief 计算 -val，并将结果保存到 result �?
    */
   virtual RC negative(const Value &val, Value &result) const { return RC::UNSUPPORTED; }
 
   /**
-   * @brief 将 val 转换为 type 类型，并将结果保存到 result 中
+   * @brief �? val 转换�? type 类型，并将结果保存到 result �?
    */
   virtual RC cast_to(const Value &val, AttrType type, Value &result) const { return RC::UNSUPPORTED; }
 
   /**
-   * @brief 将 val 转换为 string，并将结果保存到 result 中
+   * @brief �? val 转换�? string，并将结果保存到 result �?
    */
   virtual RC to_string(const Value &val, string &result) const { return RC::UNSUPPORTED; }
 
   /**
-   * @brief 计算从 type 到 attr_type 的隐式转换的 cost，如果无法转换，返回 INT32_MAX
+   * @brief 计算�? type �? attr_type 的隐式转换的 cost，如果无法转换，返回 INT32_MAX
    */
   virtual int cast_cost(AttrType type)
   {
