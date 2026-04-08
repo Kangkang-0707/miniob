@@ -19,19 +19,10 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/operator_node.h"
 
 class Record;
+class Chunk;
 class TupleCellSpec;
 class Trx;
 
-/**
- * @brief 物理算子
- * @defgroup PhysicalOperator
- * @details 物理算子描述执行计划将如何执行，比如从表中怎么获取数据，如何做投影，怎么做连接等
- */
-
-/**
- * @brief 物理算子类型
- * @ingroup PhysicalOperator
- */
 enum class PhysicalOperatorType
 {
   TABLE_SCAN,
@@ -48,6 +39,7 @@ enum class PhysicalOperatorType
   STRING_LIST,
   DELETE,
   INSERT,
+  UPDATE,
   SCALAR_GROUP_BY,
   HASH_GROUP_BY,
   GROUP_BY_VEC,
@@ -55,20 +47,12 @@ enum class PhysicalOperatorType
   EXPR_VEC,
 };
 
-/**
- * @brief 与LogicalOperator对应，物理算子描述执行计划将如何执行
- * @ingroup PhysicalOperator
- */
 class PhysicalOperator : public OperatorNode
 {
 public:
   PhysicalOperator() = default;
-
   virtual ~PhysicalOperator() = default;
 
-  /**
-   * 这两个函数是为了打印时使用的，比如在explain中
-   */
   virtual string name() const;
   virtual string param() const;
 
@@ -83,11 +67,9 @@ public:
   virtual RC close() = 0;
 
   virtual Tuple *current_tuple() { return nullptr; }
-
-  virtual RC tuple_schema(TupleSchema &schema) const { return RC::UNIMPLEMENTED; }
+  virtual RC     tuple_schema(TupleSchema &schema) const { return RC::UNIMPLEMENTED; }
 
   void add_child(unique_ptr<PhysicalOperator> oper) { children_.emplace_back(std::move(oper)); }
-
   vector<unique_ptr<PhysicalOperator>> &children() { return children_; }
 
 protected:

@@ -176,6 +176,63 @@ RC Db::create_table(const char *table_name, span<const AttrInfoSqlNode> attribut
   return RC::SUCCESS;
 }
 
+RC Db::drop_table(const char *table_name)
+{
+  if (common::is_blank(table_name)) {
+    LOG_WARN("invalid argument. table name is blank");
+    return RC::INVALID_ARGUMENT;
+  }
+
+  auto iter = opened_tables_.find(table_name);
+  if (iter == opened_tables_.end()) {
+    LOG_WARN("no such table. table=%s", table_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+
+  Table *table = iter->second;
+  vector<string> index_names;
+  for (int i = 0; i < table->table_meta().index_num(); i++) {
+    index_names.emplace_back(table->table_meta().index(i)->name());
+  }
+
+  opened_tables_.erase(iter);
+  delete table;
+
+  auto remove_file = [](const string &file_name) -> RC {
+    error_code ec;
+    if (!filesystem::remove(file_name, ec) && filesystem::exists(file_name)) {
+      LOG_ERROR("failed to remove file. file=%s, errmsg=%s", file_name.c_str(), ec.message().c_str());
+      return RC::FILE_REMOVE;
+    }
+    return RC::SUCCESS;
+  };
+
+  RC rc = remove_file(table_meta_file(path_.c_str(), table_name));
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+
+  rc = remove_file(table_data_file(path_.c_str(), table_name));
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+
+  rc = remove_file(table_lob_file(path_.c_str(), table_name));
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+
+  for (const string &index_name : index_names) {
+    rc = remove_file(table_index_file(path_.c_str(), table_name, index_name.c_str()));
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
+  }
+
+  LOG_INFO("drop table success. table=%s", table_name);
+  return RC::SUCCESS;
+}
+
 Table *Db::find_table(const char *table_name) const
 {
   unordered_map<string, Table *>::const_iterator iter = opened_tables_.find(table_name);

@@ -8,37 +8,33 @@ EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
-//
-// Created by Wangyunlai on 2022/5/22.
-//
-
 #pragma once
 
-#include "common/sys/rc.h"
+#include "common/value.h"
 #include "sql/stmt/stmt.h"
 
 class Table;
+class FieldMeta;
+class FilterStmt;
 
-/**
- * @brief 更新语句
- * @ingroup Statement
- */
 class UpdateStmt : public Stmt
 {
 public:
-  UpdateStmt() = default;
-  UpdateStmt(Table *table, Value *values, int value_amount);
+  UpdateStmt(Table *table, const FieldMeta *field_meta, const Value &value, FilterStmt *filter_stmt);
+  ~UpdateStmt() override;
 
-public:
+  StmtType type() const override { return StmtType::UPDATE; }
+
+  Table            *table() const { return table_; }
+  const FieldMeta  *field_meta() const { return field_meta_; }
+  const Value      &value() const { return value_; }
+  FilterStmt       *filter_stmt() const { return filter_stmt_; }
+
   static RC create(Db *db, const UpdateSqlNode &update_sql, Stmt *&stmt);
 
-public:
-  Table *table() const { return table_; }
-  Value *values() const { return values_; }
-  int    value_amount() const { return value_amount_; }
-
 private:
-  Table *table_        = nullptr;
-  Value *values_       = nullptr;
-  int    value_amount_ = 0;
+  Table           *table_       = nullptr;
+  const FieldMeta *field_meta_  = nullptr;
+  Value            value_;
+  FilterStmt      *filter_stmt_ = nullptr;
 };

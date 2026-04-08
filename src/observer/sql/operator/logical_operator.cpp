@@ -8,34 +8,23 @@ EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
-//
-// Created by Wangyunlai on 2022/12/08.
-//
-
 #include "sql/operator/logical_operator.h"
 
 LogicalOperator::~LogicalOperator() {}
 
-void LogicalOperator::add_child(unique_ptr<LogicalOperator> oper) {
-  children_.emplace_back(std::move(oper));
-}
+void LogicalOperator::add_child(unique_ptr<LogicalOperator> oper) { children_.emplace_back(std::move(oper)); }
+
 void LogicalOperator::add_expressions(unique_ptr<Expression> expr) { expressions_.emplace_back(std::move(expr)); }
+
 bool LogicalOperator::can_generate_vectorized_operator(const LogicalOperatorType &type)
 {
-  bool bool_ret = false;
-  switch (type)
-  {
-  case LogicalOperatorType::CALC:
-  case LogicalOperatorType::DELETE:
-  case LogicalOperatorType::INSERT:
-    bool_ret = false;
-    break;
-  
-  default:
-    bool_ret = true;
-    break;
+  switch (type) {
+    case LogicalOperatorType::CALC:
+    case LogicalOperatorType::DELETE:
+    case LogicalOperatorType::INSERT:
+    case LogicalOperatorType::UPDATE: return false;
+    default: return true;
   }
-  return bool_ret;
 }
 
 void LogicalOperator::generate_general_child()
@@ -45,4 +34,3 @@ void LogicalOperator::generate_general_child()
     child->generate_general_child();
   }
 }
-

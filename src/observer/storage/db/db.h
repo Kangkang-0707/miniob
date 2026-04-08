@@ -71,6 +71,11 @@ public:
       const StorageFormat storage_format = StorageFormat::ROW_FORMAT);
 
   /**
+   * @brief 删除一张表及其相关存储文件
+   */
+  RC drop_table(const char *table_name);
+
+  /**
    * @brief 根据表名查找表
    */
   Table *find_table(const char *table_name) const;
