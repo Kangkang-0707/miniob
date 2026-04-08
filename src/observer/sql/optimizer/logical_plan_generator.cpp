@@ -101,11 +101,9 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
   unique_ptr<LogicalOperator> table_oper(nullptr);
   last_oper = &table_oper;
   unique_ptr<LogicalOperator> predicate_oper;
-
-  RC rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
-  if (OB_FAIL(rc)) {
-    LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
-    return rc;
+  RC                          rc = RC::SUCCESS;
+  if (select_stmt->predicate_expression()) {
+    predicate_oper = make_unique<PredicateLogicalOperator>(std::move(select_stmt->predicate_expression()));
   }
 
   const vector<Table *> &tables = select_stmt->tables();
@@ -121,8 +119,6 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
       table_oper = unique_ptr<LogicalOperator>(join_oper);
     }
   }
-
-
   if (predicate_oper) {
     if (*last_oper) {
       predicate_oper->add_child(std::move(*last_oper));

@@ -2,11 +2,13 @@
 
 这个目录专门记录 MiniOB 各题目的实现思路、关键步骤和排错过程。
 
-建议后续每道题都新建一个独立的 Markdown 文件，方便整理和复习。
-
 当前已有：
 
-- `date.md`：`date` 类型题目的实现思路与步骤
+- `date.md`
+- `drop-table.md`
+- `update.md`
+- `join-tables.md`
+- `simple-sub-query.md`
 
 推荐命名方式：
 

@@ -19,7 +19,6 @@ See the Mulan PSL v2 for more details. */
 #include "storage/field/field.h"
 
 class FieldMeta;
-class FilterStmt;
 class Db;
 class Table;
 
@@ -40,7 +39,7 @@ public:
 
 public:
   const vector<Table *> &tables() const { return tables_; }
-  FilterStmt            *filter_stmt() const { return filter_stmt_; }
+  unique_ptr<Expression> &predicate_expression() { return predicate_expr_; }
 
   vector<unique_ptr<Expression>> &query_expressions() { return query_expressions_; }
   vector<unique_ptr<Expression>> &group_by() { return group_by_; }
@@ -48,6 +47,6 @@ public:
 private:
   vector<unique_ptr<Expression>> query_expressions_;
   vector<Table *>                tables_;
-  FilterStmt                    *filter_stmt_ = nullptr;
+  unique_ptr<Expression>         predicate_expr_;
   vector<unique_ptr<Expression>> group_by_;
 };

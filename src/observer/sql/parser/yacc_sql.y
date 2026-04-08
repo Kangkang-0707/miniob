@@ -96,6 +96,10 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         VALUES
         FROM
         WHERE
+        INNER
+        JOIN
+        IN
+        NOT
         AND
         SET
         ON
@@ -134,6 +138,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   vector<ConditionSqlNode> *                 condition_list;
   vector<RelAttrSqlNode> *                   rel_attr_list;
   vector<string> *                           relation_list;
+  RelationSqlNode *                          relation_sql;
   vector<string> *                           key_list;
   char *                                     cstring;
   int                                        number;
@@ -150,6 +155,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %destructor { delete $$; } <condition_list>
 // %destructor { delete $$; } <rel_attr_list>
 %destructor { delete $$; } <relation_list>
+%destructor { delete $$; } <relation_sql>
 %destructor { delete $$; } <key_list>
 
 %token <number> NUMBER
@@ -175,6 +181,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <key_list>            primary_key
 %type <key_list>            attr_list
 %type <relation_list>       rel_list
+%type <relation_sql>        from_clause
 %type <expression>          expression
 %type <expression>          aggregate_expression
 %type <expression_list>     expression_list
@@ -203,6 +210,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <sql_node>            help_stmt
 %type <sql_node>            exit_stmt
 %type <sql_node>            command_wrapper
+%type <sql_node>            sub_query
 // commands should be a list but I use a single command instead
 %type <sql_node>            commands
 
@@ -485,7 +493,7 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM rel_list where group_by
+    SELECT expression_list FROM from_clause where group_by
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -494,12 +502,16 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
 
       if ($4 != nullptr) {
-        $$->selection.relations.swap(*$4);
+        $$->selection.relations.swap($4->relations);
+        $$->selection.conditions.swap($4->conditions);
         delete $4;
       }
 
       if ($5 != nullptr) {
-        $$->selection.conditions.swap(*$5);
+        $$->selection.conditions.insert(
+          $$->selection.conditions.end(),
+          $5->begin(),
+          $5->end());
         delete $5;
       }
 
@@ -507,6 +519,12 @@ select_stmt:        /*  select 语句的语法解析树*/
         $$->selection.group_by.swap(*$6);
         delete $6;
       }
+    }
+    ;
+sub_query:
+    LBRACE select_stmt RBRACE
+    {
+      $$ = $2;
     }
     ;
 calc_stmt:
@@ -594,6 +612,24 @@ rel_attr:
 relation:
     ID {
       $$ = $1;
+    }
+    ;
+from_clause:
+    relation {
+      $$ = new RelationSqlNode;
+      $$->relations.push_back($1);
+    }
+    | from_clause COMMA relation {
+      $$ = $1;
+      $$->relations.push_back($3);
+    }
+    | from_clause INNER JOIN relation ON condition_list {
+      $$ = $1;
+      $$->relations.push_back($4);
+      if ($6 != nullptr) {
+        $$->conditions.insert($$->conditions.end(), $6->begin(), $6->end());
+        delete $6;
+      }
     }
     ;
 rel_list:
@@ -685,6 +721,52 @@ condition:
 
       delete $1;
       delete $3;
+    }
+    | rel_attr comp_op sub_query
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_attr = 0;
+      $$->right_is_sub_query = 1;
+      $$->right_sub_query.reset($3);
+      $$->comp = $2;
+
+      delete $1;
+    }
+    | sub_query comp_op rel_attr
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 0;
+      $$->left_is_sub_query = 1;
+      $$->left_sub_query.reset($1);
+      $$->right_is_attr = 1;
+      $$->right_attr = *$3;
+      $$->comp = $2;
+
+      delete $3;
+    }
+    | rel_attr IN sub_query
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_sub_query = 1;
+      $$->right_sub_query.reset($3);
+      $$->comp = IN_OP;
+
+      delete $1;
+    }
+    | rel_attr NOT IN sub_query
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_sub_query = 1;
+      $$->right_sub_query.reset($4);
+      $$->comp = NOT_IN_OP;
+
+      delete $1;
     }
     ;
 
