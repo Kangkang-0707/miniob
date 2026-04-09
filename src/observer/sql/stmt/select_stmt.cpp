@@ -267,21 +267,26 @@ RC build_condition_expression(Db *db, const ConditionSqlNode &condition, unique_
   expr = nullptr;
 
   if (condition.comp == IN_OP || condition.comp == NOT_IN_OP) {
-    vector<Value> sub_query_values;
-    RC            rc = extract_single_column_rows(db, condition.right_sub_query, sub_query_values, false);
-    if (OB_FAIL(rc)) {
-      return rc;
+    vector<Value> in_values;
+    RC            rc = RC::SUCCESS;
+    if (condition.right_is_value_list) {
+      in_values = condition.right_values;
+    } else {
+      rc = extract_single_column_rows(db, condition.right_sub_query, in_values, false);
+      if (OB_FAIL(rc)) {
+        return rc;
+      }
     }
 
-    if (sub_query_values.empty()) {
+    if (in_values.empty()) {
       expr = make_bool_expression(condition.comp == NOT_IN_OP);
       return RC::SUCCESS;
     }
 
     auto left_expr = make_operand_expression(condition, true);
     vector<unique_ptr<Expression>> children;
-    children.reserve(sub_query_values.size());
-    for (const Value &value : sub_query_values) {
+    children.reserve(in_values.size());
+    for (const Value &value : in_values) {
       auto right_expr = make_unique<ValueExpr>(value);
       auto comp_expr = make_unique<ComparisonExpr>(
           condition.comp == IN_OP ? EQUAL_TO : NOT_EQUAL, left_expr->copy(), std::move(right_expr));

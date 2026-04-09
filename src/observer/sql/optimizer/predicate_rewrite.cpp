@@ -49,8 +49,6 @@ RC PredicateRewriteRule::rewrite(unique_ptr<LogicalOperator> &oper, bool &change
     for (auto &grand_child_oper : grand_child_opers) {
       oper->add_child(std::move(grand_child_oper));
     }
-  } else {
-    child_opers.clear();
   }
 
   change_made = true;

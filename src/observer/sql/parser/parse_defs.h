@@ -79,7 +79,9 @@ struct ConditionSqlNode
                                  ///< 1时，操作符右边是属性名，0时，是属性值
   RelAttrSqlNode right_attr;     ///< right-hand side attribute if right_is_attr = TRUE 右边的属性
   int            right_is_sub_query = 0; ///< TRUE if right-hand side is a sub query
+  int            right_is_value_list = 0; ///< TRUE if right-hand side is a value list
   Value          right_value;    ///< right-hand side value if right_is_attr = FALSE
+  vector<Value>  right_values;   ///< right-hand side values if right_is_value_list = TRUE
   shared_ptr<ParsedSqlNode> right_sub_query;  ///< right-hand side sub query if right_is_sub_query = TRUE
 };
 

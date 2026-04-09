@@ -757,6 +757,18 @@ condition:
 
       delete $1;
     }
+    | rel_attr IN LBRACE value_list RBRACE
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_value_list = 1;
+      $$->right_values.swap(*$4);
+      $$->comp = IN_OP;
+
+      delete $1;
+      delete $4;
+    }
     | rel_attr NOT IN sub_query
     {
       $$ = new ConditionSqlNode;
@@ -767,6 +779,18 @@ condition:
       $$->comp = NOT_IN_OP;
 
       delete $1;
+    }
+    | rel_attr NOT IN LBRACE value_list RBRACE
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_value_list = 1;
+      $$->right_values.swap(*$5);
+      $$->comp = NOT_IN_OP;
+
+      delete $1;
+      delete $5;
     }
     ;
 

@@ -34,6 +34,22 @@ int FloatType::compare(const Column &left, const Column &right, int left_idx, in
       (void *)&((float*)right.data())[right_idx]);
 }
 
+RC FloatType::cast_to(const Value &val, AttrType type, Value &result) const
+{
+  switch (type) {
+    case AttrType::CHARS: {
+      stringstream ss;
+      ss << common::double_to_str(val.get_float());
+      result.set_string(ss.str().c_str());
+      return RC::SUCCESS;
+    }
+    default: {
+      LOG_WARN("unsupported type %d", type);
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+  }
+}
+
 RC FloatType::add(const Value &left, const Value &right, Value &result) const
 {
   result.set_float(left.get_float() + right.get_float());
