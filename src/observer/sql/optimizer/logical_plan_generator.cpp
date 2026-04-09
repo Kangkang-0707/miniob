@@ -42,15 +42,6 @@ See the Mulan PSL v2 for more details. */
 using namespace std;
 using namespace common;
 
-namespace {
-
-unique_ptr<Expression> make_bool_expression(bool value)
-{
-  return make_unique<ValueExpr>(Value(value));
-}
-
-}
-
 RC LogicalPlanGenerator::create(Stmt *stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
   RC rc = RC::SUCCESS;
@@ -189,10 +180,6 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
           Value left_val;
           if (OB_FAIL(rc = cast_expr->try_get_value(left_val)))
           {
-            if (right->value_type() == AttrType::DATES) {
-              cmp_exprs.emplace_back(make_bool_expression(false));
-              continue;
-            }
             LOG_WARN("failed to get value from left child", strrc(rc));
             return rc;
           }
@@ -207,10 +194,6 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
           Value right_val;
           if (OB_FAIL(rc = cast_expr->try_get_value(right_val)))
           {
-            if (left->value_type() == AttrType::DATES) {
-              cmp_exprs.emplace_back(make_bool_expression(false));
-              continue;
-            }
             LOG_WARN("failed to get value from right child", strrc(rc));
             return rc;
           }

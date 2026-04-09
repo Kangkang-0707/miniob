@@ -98,10 +98,6 @@ RC normalize_comparison_expression(unique_ptr<Expression> &expr)
       Value left_val;
       rc = cast_expr->try_get_value(left_val);
       if (OB_FAIL(rc)) {
-        if (right->value_type() == AttrType::DATES) {
-          expr = make_bool_expression(false);
-          return RC::SUCCESS;
-        }
         LOG_WARN("failed to cast left constant");
         return rc;
       }
@@ -116,10 +112,6 @@ RC normalize_comparison_expression(unique_ptr<Expression> &expr)
       Value right_val;
       rc = cast_expr->try_get_value(right_val);
       if (OB_FAIL(rc)) {
-        if (left->value_type() == AttrType::DATES) {
-          expr = make_bool_expression(false);
-          return RC::SUCCESS;
-        }
         LOG_WARN("failed to cast right constant");
         return rc;
       }
