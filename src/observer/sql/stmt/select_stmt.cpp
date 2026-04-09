@@ -41,6 +41,11 @@ int implicit_cast_cost(AttrType from, AttrType to)
   return DataType::type_instance(from)->cast_cost(to);
 }
 
+bool is_numeric_type(AttrType type)
+{
+  return type == AttrType::INTS || type == AttrType::FLOATS;
+}
+
 unique_ptr<Expression> make_bool_expression(bool value)
 {
   return make_unique<ValueExpr>(Value(value));
@@ -87,6 +92,36 @@ RC normalize_comparison_expression(unique_ptr<Expression> &expr)
   unique_ptr<Expression> &right = comparison_expr->right();
   if (left->value_type() == right->value_type()) {
     return RC::SUCCESS;
+  }
+
+  if (left->type() == ExprType::VALUE && right->type() == ExprType::VALUE) {
+    auto *left_value_expr  = static_cast<ValueExpr *>(left.get());
+    auto *right_value_expr = static_cast<ValueExpr *>(right.get());
+
+    const Value &left_value  = left_value_expr->get_value();
+    const Value &right_value = right_value_expr->get_value();
+
+    auto try_normalize_char_numeric = [&](const Value &char_value, AttrType target_type, bool normalize_left) -> bool {
+      if (char_value.attr_type() != AttrType::CHARS || !is_numeric_type(target_type)) {
+        return false;
+      }
+
+      Value normalized;
+      RC    cast_rc = DataType::type_instance(target_type)->set_value_from_str(normalized, char_value.get_string());
+      if (OB_FAIL(cast_rc)) {
+        expr = make_bool_expression(false);
+      } else if (normalize_left) {
+        left = make_unique<ValueExpr>(normalized);
+      } else {
+        right = make_unique<ValueExpr>(normalized);
+      }
+      return true;
+    };
+
+    if (try_normalize_char_numeric(left_value, right_value.attr_type(), true) ||
+        try_normalize_char_numeric(right_value, left_value.attr_type(), false)) {
+      return RC::SUCCESS;
+    }
   }
 
   auto left_to_right_cost = implicit_cast_cost(left->value_type(), right->value_type());
