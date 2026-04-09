@@ -34,3 +34,60 @@ RC SumAggregator::evaluate(Value& result)
   result = value_;
   return RC::SUCCESS;
 }
+
+RC CountAggregator::accumulate(const Value &value)
+{
+  static_cast<void>(value);
+  count_++;
+  return RC::SUCCESS;
+}
+
+RC CountAggregator::evaluate(Value &result)
+{
+  result.set_int(count_);
+  return RC::SUCCESS;
+}
+
+RC AvgAggregator::accumulate(const Value &value)
+{
+  sum_ += value.get_float();
+  count_++;
+  return RC::SUCCESS;
+}
+
+RC AvgAggregator::evaluate(Value &result)
+{
+  if (count_ == 0) {
+    return RC::RECORD_EOF;
+  }
+  result.set_float(sum_ / count_);
+  return RC::SUCCESS;
+}
+
+RC MinAggregator::accumulate(const Value &value)
+{
+  if (value_.attr_type() == AttrType::UNDEFINED || value.compare(value_) < 0) {
+    value_ = value;
+  }
+  return RC::SUCCESS;
+}
+
+RC MinAggregator::evaluate(Value &result)
+{
+  result = value_;
+  return RC::SUCCESS;
+}
+
+RC MaxAggregator::accumulate(const Value &value)
+{
+  if (value_.attr_type() == AttrType::UNDEFINED || value.compare(value_) > 0) {
+    value_ = value;
+  }
+  return RC::SUCCESS;
+}
+
+RC MaxAggregator::evaluate(Value &result)
+{
+  result = value_;
+  return RC::SUCCESS;
+}

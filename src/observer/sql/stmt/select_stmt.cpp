@@ -96,7 +96,12 @@ RC normalize_comparison_expression(unique_ptr<Expression> &expr)
     auto     cast_expr = make_unique<CastExpr>(std::move(left), right->value_type());
     if (left_type == ExprType::VALUE) {
       Value left_val;
-      if (OB_FAIL(cast_expr->try_get_value(left_val))) {
+      rc = cast_expr->try_get_value(left_val);
+      if (OB_FAIL(rc)) {
+        if (right->value_type() == AttrType::DATES) {
+          expr = make_bool_expression(false);
+          return RC::SUCCESS;
+        }
         LOG_WARN("failed to cast left constant");
         return rc;
       }
@@ -109,7 +114,12 @@ RC normalize_comparison_expression(unique_ptr<Expression> &expr)
     auto     cast_expr  = make_unique<CastExpr>(std::move(right), left->value_type());
     if (right_type == ExprType::VALUE) {
       Value right_val;
-      if (OB_FAIL(cast_expr->try_get_value(right_val))) {
+      rc = cast_expr->try_get_value(right_val);
+      if (OB_FAIL(rc)) {
+        if (left->value_type() == AttrType::DATES) {
+          expr = make_bool_expression(false);
+          return RC::SUCCESS;
+        }
         LOG_WARN("failed to cast right constant");
         return rc;
       }
