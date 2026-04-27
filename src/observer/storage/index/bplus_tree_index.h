@@ -27,8 +27,10 @@ public:
   BplusTreeIndex() = default;
   virtual ~BplusTreeIndex() noexcept;
 
-  RC create(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta) override;
-  RC open(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta) override;
+  RC create(Table *table, const char *file_name, const IndexMeta &index_meta,
+      const vector<const FieldMeta *> &field_metas) override;
+  RC open(Table *table, const char *file_name, const IndexMeta &index_meta,
+      const vector<const FieldMeta *> &field_metas) override;
   RC close();
 
   RC insert_entry(const char *record, const RID *rid) override;
@@ -41,6 +43,12 @@ public:
       int right_len, bool right_inclusive) override;
 
   RC sync() override;
+
+private:
+  RC   make_key(const char *record, vector<char> &key) const;
+  int  key_length() const;
+  bool is_single_field_index() const { return field_metas_.size() == 1; }
+  bool has_null_field(const char *record) const;
 
 private:
   bool             inited_ = false;

@@ -27,23 +27,33 @@ static const Json::StaticString FIELD_STORAGE_ENGINE("storage_engine");
 static const Json::StaticString FIELD_FIELDS("fields");
 static const Json::StaticString FIELD_INDEXES("indexes");
 static const Json::StaticString FIELD_PRIMARY_KEYS("primary_keys");
+static const Json::StaticString FIELD_NULL_BITMAP_SIZE("null_bitmap_size");
 
 TableMeta::TableMeta(const TableMeta &other)
     : table_id_(other.table_id_),
       name_(other.name_),
+      trx_fields_(other.trx_fields_),
       fields_(other.fields_),
       indexes_(other.indexes_),
+      primary_keys_(other.primary_keys_),
       storage_format_(other.storage_format_),
       storage_engine_(other.storage_engine_),
-      record_size_(other.record_size_)
+      record_size_(other.record_size_),
+      null_bitmap_size_(other.null_bitmap_size_)
 {}
 
 void TableMeta::swap(TableMeta &other) noexcept
 {
+  std::swap(table_id_, other.table_id_);
   name_.swap(other.name_);
   fields_.swap(other.fields_);
+  trx_fields_.swap(other.trx_fields_);
   indexes_.swap(other.indexes_);
+  primary_keys_.swap(other.primary_keys_);
+  std::swap(storage_format_, other.storage_format_);
+  std::swap(storage_engine_, other.storage_engine_);
   std::swap(record_size_, other.record_size_);
+  std::swap(null_bitmap_size_, other.null_bitmap_size_);
 }
 
 RC TableMeta::init(int32_t table_id, const char *name, const vector<FieldMeta> *trx_fields,
@@ -71,7 +81,7 @@ RC TableMeta::init(int32_t table_id, const char *name, const vector<FieldMeta> *
     fields_.resize(attributes.size() + trx_fields->size());
     for (size_t i = 0; i < trx_fields->size(); i++) {
       const FieldMeta &field_meta = (*trx_fields)[i];
-      fields_[i] = FieldMeta(field_meta.name(), field_meta.type(), field_offset, field_meta.len(), false /*visible*/, field_meta.field_id());
+      fields_[i] = FieldMeta(field_meta.name(), field_meta.type(), field_offset, field_meta.len(), false /*visible*/, field_meta.field_id(), false);
       field_offset += field_meta.len();
     }
 
@@ -80,11 +90,14 @@ RC TableMeta::init(int32_t table_id, const char *name, const vector<FieldMeta> *
     fields_.resize(attributes.size());
   }
 
+  null_bitmap_size_ = static_cast<int>((attributes.size() + 7) / 8);
+  field_offset += null_bitmap_size_;
+
   for (size_t i = 0; i < attributes.size(); i++) {
     const AttrInfoSqlNode &attr_info = attributes[i];
     // `i` is the col_id of fields[i]
     rc = fields_[i + trx_field_num].init(
-      attr_info.name.c_str(), attr_info.type, field_offset, attr_info.length, true /*visible*/, i);
+      attr_info.name.c_str(), attr_info.type, field_offset, attr_info.length, true /*visible*/, i, attr_info.nullable);
     if (OB_FAIL(rc)) {
       LOG_ERROR("Failed to init field meta. table name=%s, field name: %s", name, attr_info.name.c_str());
       return rc;
@@ -159,7 +172,7 @@ const IndexMeta *TableMeta::index(const char *name) const
 const IndexMeta *TableMeta::find_index_by_field(const char *field) const
 {
   for (const IndexMeta &index : indexes_) {
-    if (0 == strcmp(index.field(), field)) {
+    if (index.fields().size() == 1 && 0 == strcmp(index.field(), field)) {
       return &index;
     }
   }
@@ -179,6 +192,7 @@ int TableMeta::serialize(ostream &ss) const
   table_value[FIELD_TABLE_NAME] = name_;
   table_value[FIELD_STORAGE_FORMAT] = static_cast<int>(storage_format_);
   table_value[FIELD_STORAGE_ENGINE] = static_cast<int>(storage_engine_);
+  table_value[FIELD_NULL_BITMAP_SIZE] = null_bitmap_size_;
 
   Json::Value fields_value;
   for (const FieldMeta &field : fields_) {
@@ -263,6 +277,7 @@ int TableMeta::deserialize(istream &is)
   }
 
   int32_t storage_engine = storage_engine_value.asInt();
+  const Json::Value &null_bitmap_size_value = table_value[FIELD_NULL_BITMAP_SIZE];
 
   RC  rc        = RC::SUCCESS;
   int field_num = fields_value.size();
@@ -285,13 +300,14 @@ int TableMeta::deserialize(istream &is)
   table_id_ = table_id;
   storage_format_ = static_cast<StorageFormat>(storage_format);
   storage_engine_ = static_cast<StorageEngine>(storage_engine);
+  null_bitmap_size_ = null_bitmap_size_value.isInt() ? null_bitmap_size_value.asInt() : 0;
   name_.swap(table_name);
   fields_.swap(fields);
-  record_size_ = fields_.back().offset() + fields_.back().len() - fields_.begin()->offset();
+  record_size_ = fields_.empty() ? 0 : fields_.back().offset() + fields_.back().len();
 
   for (const FieldMeta &field_meta : fields_) {
     if (!field_meta.visible()) {
-      trx_fields_.push_back(field_meta); // 字段加上trx标识更好
+      trx_fields_.push_back(field_meta); // 瀛楁鍔犱笂trx鏍囪瘑鏇村ソ
     }
   }
 
@@ -322,8 +338,9 @@ int TableMeta::deserialize(istream &is)
       LOG_ERROR("Invalid table meta. primary keys is not array, json value=%s", fields_value.toStyledString().c_str());
       return -1;
     }
-    const int              primary_key_num = primary_keys_value.size();
-    vector<string> primary_keys(primary_key_num);
+    const int primary_key_num = primary_keys_value.size();
+    vector<string> primary_keys;
+    primary_keys.reserve(primary_key_num);
     for (int i = 0; i < primary_key_num; i++) {
       const Json::Value &field_name_value = primary_keys_value[i];
       if (!field_name_value.isString()) {

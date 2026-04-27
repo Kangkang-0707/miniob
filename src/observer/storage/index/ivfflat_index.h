@@ -22,11 +22,13 @@ public:
   IvfflatIndex(){};
   virtual ~IvfflatIndex() noexcept {};
 
-  RC create(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta)
+  RC create(Table *table, const char *file_name, const IndexMeta &index_meta,
+      const vector<const FieldMeta *> &field_metas) override
   {
     return RC::UNIMPLEMENTED;
   };
-  RC open(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta)
+  RC open(Table *table, const char *file_name, const IndexMeta &index_meta,
+      const vector<const FieldMeta *> &field_metas) override
   {
 
     return RC::UNIMPLEMENTED;

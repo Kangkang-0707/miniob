@@ -22,7 +22,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/index_meta.h"
 
 /**
- * @brief 表元数据
+ * @brief 琛ㄥ厓鏁版嵁
  *
  */
 class TableMeta : public common::Serializable
@@ -64,6 +64,8 @@ public:
   const vector<string> &primary_keys() const { return primary_keys_; }
 
   int record_size() const;
+  int null_bitmap_size() const { return null_bitmap_size_; }
+  int null_bitmap_offset() const { return trx_fields_.empty() ? 0 : trx_fields_.back().offset() + trx_fields_.back().len(); }
 
 public:
   int  serialize(ostream &os) const override;
@@ -76,11 +78,12 @@ protected:
   int32_t           table_id_ = -1;
   string            name_;
   vector<FieldMeta> trx_fields_;
-  vector<FieldMeta> fields_;  // 包含sys_fields
+  vector<FieldMeta> fields_;  // 鍖呭惈sys_fields
   vector<IndexMeta> indexes_;
   vector<string>    primary_keys_;
   StorageFormat     storage_format_;
   StorageEngine     storage_engine_;
 
   int record_size_ = 0;
+  int null_bitmap_size_ = 0;
 };

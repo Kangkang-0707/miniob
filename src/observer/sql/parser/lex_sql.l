@@ -41,7 +41,7 @@ while (0);
 #include "yacc_sql.hpp"
 
 #ifndef register
-#define register 
+#define register
 #endif // register
 
 extern int atoi();
@@ -101,7 +101,9 @@ CALC                                    RETURN_TOKEN(CALC);
 FROM                                    RETURN_TOKEN(FROM);
 WHERE                                   RETURN_TOKEN(WHERE);
 IN                                      RETURN_TOKEN(IN);
+IS                                      RETURN_TOKEN(IS);
 NOT                                     RETURN_TOKEN(NOT);
+NULL                                    RETURN_TOKEN(NULL_T);
 LIKE                                    RETURN_TOKEN(LIKE);
 AND                                     RETURN_TOKEN(AND);
 INSERT                                  RETURN_TOKEN(INSERT);
@@ -128,6 +130,7 @@ STORAGE                                 RETURN_TOKEN(STORAGE);
 FORMAT                                  RETURN_TOKEN(FORMAT);
 PRIMARY                                 RETURN_TOKEN(PRIMARY);
 KEY                                     RETURN_TOKEN(KEY);
+UNIQUE                                  RETURN_TOKEN(UNIQUE);
 ANALYZE                                 RETURN_TOKEN(ANALYZE);
 FIELDS                                  RETURN_TOKEN(FIELDS);
 TERMINATED                              RETURN_TOKEN(TERMINATED);

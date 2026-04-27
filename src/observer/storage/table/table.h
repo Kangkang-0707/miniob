@@ -37,7 +37,7 @@ class Trx;
 class Db;
 
 /**
- * @brief 表
+ * @brief 琛?
  *
  */
 class Table
@@ -51,37 +51,37 @@ public:
   friend class HeapTableEngine;
 
   /**
-   * 创建一个表
-   * @param path 元数据保存的文件(完整路径)
-   * @param name 表名
-   * @param base_dir 表数据存放的路径
-   * @param attribute_count 字段个数
-   * @param attributes 字段
+   * 鍒涘缓涓€涓〃
+   * @param path 鍏冩暟鎹繚瀛樼殑鏂囦欢(瀹屾暣璺緞)
+   * @param name 琛ㄥ悕
+   * @param base_dir 琛ㄦ暟鎹瓨鏀剧殑璺緞
+   * @param attribute_count 瀛楁涓暟
+   * @param attributes 瀛楁
    */
   RC create(Db *db, int32_t table_id, const char *path, const char *name, const char *base_dir,
       span<const AttrInfoSqlNode> attributes, const vector<string> &primary_keys, StorageFormat storage_format,
       StorageEngine storage_engine);
 
   /**
-   * 打开一个表
-   * @param meta_file 保存表元数据的文件完整路径
-   * @param base_dir 表所在的文件夹，表记录数据文件、索引数据文件存放位置
+   * 鎵撳紑涓€涓〃
+   * @param meta_file 淇濆瓨琛ㄥ厓鏁版嵁鐨勬枃浠跺畬鏁磋矾寰?
+   * @param base_dir 琛ㄦ墍鍦ㄧ殑鏂囦欢澶癸紝琛ㄨ褰曟暟鎹枃浠躲€佺储寮曟暟鎹枃浠跺瓨鏀句綅缃?
    */
   RC open(Db *db, const char *meta_file, const char *base_dir);
 
   /**
-   * @brief 根据给定的字段生成一个记录/行
-   * @details 通常是由用户传过来的字段，按照schema信息组装成一个record。
-   * @param value_num 字段的个数
-   * @param values    每个字段的值
-   * @param record    生成的记录数据
+   * @brief 鏍规嵁缁欏畾鐨勫瓧娈电敓鎴愪竴涓褰?琛?
+   * @details 閫氬父鏄敱鐢ㄦ埛浼犺繃鏉ョ殑瀛楁锛屾寜鐓chema淇℃伅缁勮鎴愪竴涓猺ecord銆?
+   * @param value_num 瀛楁鐨勪釜鏁?
+   * @param values    姣忎釜瀛楁鐨勫€?
+   * @param record    鐢熸垚鐨勮褰曟暟鎹?
    */
   RC make_record(int value_num, const Value *values, Record &record);
 
   /**
-   * @brief 在当前的表中插入一条记录
-   * @details 在表文件和索引中插入关联数据。这里只管在表中插入数据，不关心事务相关操作。
-   * @param record[in/out] 传入的数据包含具体的数据，插入成功会通过此字段返回RID
+   * @brief 鍦ㄥ綋鍓嶇殑琛ㄤ腑鎻掑叆涓€鏉¤褰?
+   * @details 鍦ㄨ〃鏂囦欢鍜岀储寮曚腑鎻掑叆鍏宠仈鏁版嵁銆傝繖閲屽彧绠″湪琛ㄤ腑鎻掑叆鏁版嵁锛屼笉鍏冲績浜嬪姟鐩稿叧鎿嶄綔銆?
+   * @param record[in/out] 浼犲叆鐨勬暟鎹寘鍚叿浣撶殑鏁版嵁锛屾彃鍏ユ垚鍔熶細閫氳繃姝ゅ瓧娈佃繑鍥濺ID
    */
   RC insert_record(Record &record);
 
@@ -94,15 +94,15 @@ public:
   RC get_record(const RID &rid, Record &record);
 
   // TODO refactor
-  RC create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name);
+  RC create_index(Trx *trx, const vector<const FieldMeta *> &field_metas, const char *index_name, bool unique);
 
   RC get_record_scanner(RecordScanner *&scanner, Trx *trx, ReadWriteMode mode);
 
   RC get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadWriteMode mode);
 
   /**
-   * @brief 可以在页面锁保护的情况下访问记录
-   * @details 当前是在事务中访问记录，为了提供一个“原子性”的访问模式
+   * @brief 鍙互鍦ㄩ〉闈㈤攣淇濇姢鐨勬儏鍐典笅璁块棶璁板綍
+   * @details 褰撳墠鏄湪浜嬪姟涓闂褰曪紝涓轰簡鎻愪緵涓€涓€滃師瀛愭€р€濈殑璁块棶妯″紡
    * @param rid
    * @param visitor
    * @return RC
@@ -123,6 +123,8 @@ public:
 
 private:
   RC set_value_to_record(char *record_data, const Value &value, const FieldMeta *field);
+  void set_field_null(char *record_data, int field_id, bool is_null) const;
+  bool field_is_null(const char *record_data, int field_id) const;
 
 private:
   // RC init_record_handler(const char *base_dir);
@@ -134,8 +136,8 @@ public:
 private:
   Db       *db_ = nullptr;
   TableMeta table_meta_;
-  // DiskBufferPool    *data_buffer_pool_ = nullptr;  /// 数据文件关联的buffer pool
-  // RecordFileHandler *record_handler_   = nullptr;  /// 记录操作
+  // DiskBufferPool    *data_buffer_pool_ = nullptr;  /// 鏁版嵁鏂囦欢鍏宠仈鐨刡uffer pool
+  // RecordFileHandler *record_handler_   = nullptr;  /// 璁板綍鎿嶄綔
   // vector<Index *>    indexes_;
   unique_ptr<TableEngine> engine_      = nullptr;
   LobFileHandler         *lob_handler_ = nullptr;

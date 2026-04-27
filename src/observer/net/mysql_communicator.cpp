@@ -631,7 +631,7 @@ RC MysqlCommunicator::read_event(SessionEvent *&event)
   vector<char> buf(packet_header.payload_length);
   ret = common::readn(fd_, buf.data(), packet_header.payload_length);
   if (ret != 0) {
-    LOG_WARN("failed to read packet payload. length=%d, addr=%s, error=%s", 
+    LOG_WARN("failed to read packet payload. length=%d, addr=%s, error=%s",
              packet_header.payload_length, addr_.c_str(), strerror(errno));
     return RC::IOERR_READ;
   }
@@ -1002,7 +1002,11 @@ RC MysqlCommunicator::write_tuple_result(SqlResult *sql_result, vector<char> &pa
         break;  // TODO send error packet
       }
 
-      pos += store_lenenc_string(buf + pos, value.to_string().c_str());
+      if (value.is_null()) {
+        pos += store_int1(buf + pos, 0xFB);
+      } else {
+        pos += store_lenenc_string(buf + pos, value.to_string().c_str());
+      }
     }
 
     int payload_length = pos - 4;
@@ -1038,7 +1042,11 @@ RC MysqlCommunicator::write_chunk_result(SqlResult *sql_result, vector<char> &pa
 
       for (int col_idx = 0; col_idx < column_num; col_idx++) {
         Value value = chunk.get_value(col_idx, i);
-        pos += store_lenenc_string(buf + pos, value.to_string().c_str());
+        if (value.is_null()) {
+          pos += store_int1(buf + pos, 0xFB);
+        } else {
+          pos += store_lenenc_string(buf + pos, value.to_string().c_str());
+        }
       }
 
       int payload_length = pos - 4;

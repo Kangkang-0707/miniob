@@ -98,7 +98,16 @@ RC normalize_comparison_expression(unique_ptr<Expression> &expr)
     return RC::SUCCESS;
   }
 
+  if (comparison_expr->comp() == IS_NULL_OP || comparison_expr->comp() == IS_NOT_NULL_OP) {
+    return RC::SUCCESS;
+  }
+
   if (left->value_type() == right->value_type()) {
+    return RC::SUCCESS;
+  }
+
+  if ((left->type() == ExprType::VALUE && static_cast<ValueExpr *>(left.get())->get_value().is_null()) ||
+      (right->type() == ExprType::VALUE && static_cast<ValueExpr *>(right.get())->get_value().is_null())) {
     return RC::SUCCESS;
   }
 

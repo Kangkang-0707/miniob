@@ -20,8 +20,10 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include "storage/table/table_meta.h"
 
-UpdateStmt::UpdateStmt(Table *table, const FieldMeta *field_meta, const Value &value, FilterStmt *filter_stmt)
-    : table_(table), field_meta_(field_meta), value_(value), filter_stmt_(filter_stmt)
+UpdateStmt::UpdateStmt(
+    Table *table, const FieldMeta *field_meta, const Value &value, shared_ptr<ParsedSqlNode> value_sub_query, FilterStmt *filter_stmt)
+    : table_(table), field_meta_(field_meta), value_(value), value_is_sub_query_(value_sub_query != nullptr),
+      value_sub_query_(std::move(value_sub_query)), filter_stmt_(filter_stmt)
 {}
 
 UpdateStmt::~UpdateStmt()
@@ -56,7 +58,16 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 
   Value value;
   RC    rc = RC::SUCCESS;
-  if (update.value.attr_type() == field_meta->type()) {
+  shared_ptr<ParsedSqlNode> value_sub_query;
+  if (update.value_is_sub_query) {
+    value_sub_query = update.value_sub_query;
+  } else if (update.value.is_null()) {
+    if (!field_meta->nullable()) {
+      LOG_WARN("field does not allow null. table=%s, field=%s", table_name, update.attribute_name.c_str());
+      return RC::INVALID_ARGUMENT;
+    }
+    value.set_null(field_meta->type());
+  } else if (update.value.attr_type() == field_meta->type()) {
     value.set_value(update.value);
   } else {
     rc = Value::cast_to(update.value, field_meta->type(), value);
@@ -80,6 +91,6 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     return rc;
   }
 
-  stmt = new UpdateStmt(table, field_meta, value, filter_stmt);
+  stmt = new UpdateStmt(table, field_meta, value, value_sub_query, filter_stmt);
   return RC::SUCCESS;
 }

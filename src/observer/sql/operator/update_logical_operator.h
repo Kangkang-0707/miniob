@@ -11,15 +11,18 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "common/value.h"
+#include "common/lang/memory.h"
 #include "sql/operator/logical_operator.h"
 
 class Table;
 class FieldMeta;
+class ParsedSqlNode;
 
 class UpdateLogicalOperator : public LogicalOperator
 {
 public:
-  UpdateLogicalOperator(Table *table, const FieldMeta *field_meta, const Value &value);
+  UpdateLogicalOperator(
+      Table *table, const FieldMeta *field_meta, const Value &value, shared_ptr<ParsedSqlNode> value_sub_query);
   ~UpdateLogicalOperator() override = default;
 
   LogicalOperatorType type() const override { return LogicalOperatorType::UPDATE; }
@@ -28,9 +31,11 @@ public:
   Table              *table() const { return table_; }
   const FieldMeta    *field_meta() const { return field_meta_; }
   const Value        &value() const { return value_; }
+  shared_ptr<ParsedSqlNode> value_sub_query() const { return value_sub_query_; }
 
 private:
   Table           *table_      = nullptr;
   const FieldMeta *field_meta_ = nullptr;
   Value            value_;
+  shared_ptr<ParsedSqlNode> value_sub_query_;
 };

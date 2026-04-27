@@ -190,8 +190,8 @@ void LogicalUpdateToUpdate::transform(OperatorNode* input,
 {
   auto update_oper = dynamic_cast<UpdateLogicalOperator *>(input);
 
-  auto update_phys_oper =
-      make_unique<UpdatePhysicalOperator>(update_oper->table(), update_oper->field_meta(), update_oper->value());
+  auto update_phys_oper = make_unique<UpdatePhysicalOperator>(
+      update_oper->table(), update_oper->field_meta(), update_oper->value(), update_oper->value_sub_query());
   for (auto &child : update_oper->children()) {
     update_phys_oper->add_general_child(child.get());
   }

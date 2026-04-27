@@ -10,6 +10,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/operator/update_logical_operator.h"
 
-UpdateLogicalOperator::UpdateLogicalOperator(Table *table, const FieldMeta *field_meta, const Value &value)
-    : table_(table), field_meta_(field_meta), value_(value)
+UpdateLogicalOperator::UpdateLogicalOperator(
+    Table *table, const FieldMeta *field_meta, const Value &value, shared_ptr<ParsedSqlNode> value_sub_query)
+    : table_(table), field_meta_(field_meta), value_(value), value_sub_query_(std::move(value_sub_query))
 {}

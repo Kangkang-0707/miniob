@@ -179,6 +179,16 @@ ComparisonExpr::~ComparisonExpr() {}
 
 RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &result) const
 {
+  if (comp_ == IS_NULL_OP || comp_ == IS_NOT_NULL_OP) {
+    result = comp_ == IS_NULL_OP ? left.is_null() : !left.is_null();
+    return RC::SUCCESS;
+  }
+
+  if (left.is_null() || right.is_null()) {
+    result = false;
+    return RC::SUCCESS;
+  }
+
   if (comp_ == LIKE_OP || comp_ == NOT_LIKE_OP) {
     if (left.attr_type() != AttrType::CHARS || right.attr_type() != AttrType::CHARS) {
       return RC::INVALID_ARGUMENT;
@@ -281,6 +291,19 @@ RC ComparisonExpr::eval(Chunk &chunk, vector<uint8_t> &select)
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
     return rc;
+  }
+  if (comp_ == IS_NULL_OP || comp_ == IS_NOT_NULL_OP) {
+    int rows = left_column.column_type() == Column::Type::CONSTANT_COLUMN ? chunk.rows() : left_column.count();
+    for (int i = 0; i < rows; ++i) {
+      Value left_val = left_column.get_value(i);
+      bool result = false;
+      rc = compare_value(left_val, Value(), result);
+      if (rc != RC::SUCCESS) {
+        return rc;
+      }
+      select[i] &= result ? 1 : 0;
+    }
+    return RC::SUCCESS;
   }
   if (left_column.attr_type() != right_column.attr_type()) {
     LOG_WARN("cannot compare columns with different types");

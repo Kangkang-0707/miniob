@@ -20,6 +20,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse.h"
 #include "common/value.h"
 #include "storage/record/record.h"
+#include "storage/table/table.h"
 
 class Table;
 
@@ -196,6 +197,17 @@ public:
     FieldExpr       *field_expr = speces_[index];
     const FieldMeta *field_meta = field_expr->field().meta();
     cell.reset();
+    const TableMeta &table_meta = table_->table_meta();
+    if (table_meta.null_bitmap_size() > 0 && field_meta->visible()) {
+      const char *bitmap = this->record_->data() + table_meta.null_bitmap_offset();
+      const int byte_idx = field_meta->field_id() / 8;
+      const int bit_idx  = field_meta->field_id() % 8;
+      const unsigned char mask = static_cast<unsigned char>(1U << bit_idx);
+      if ((static_cast<unsigned char>(bitmap[byte_idx]) & mask) != 0) {
+        cell.set_null(field_meta->type());
+        return RC::SUCCESS;
+      }
+    }
     cell.set_type(field_meta->type());
     cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
     return RC::SUCCESS;

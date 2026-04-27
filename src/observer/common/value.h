@@ -21,11 +21,11 @@ See the Mulan PSL v2 for more details. */
 #include "common/type/string_t.h"
 
 /**
- * @brief 属性的�?
+ * @brief 灞炴€х殑鍊?
  * @ingroup DataType
- * @details 与DataType，就是数据类型，配套完成各种算术运算、比较、类型转换等操作。这里同时记录了数据的值与类型�?
- * 当需要对值做运算时，建议使用类似 Value::add 的操作而不�? DataType::add。在进行运算前，应该设置好结果的类型�?
- * 比如进行两个INT类型的除法运算时，结果类型应该设置为FLOAT�?
+ * @details 涓嶥ataType锛屽氨鏄暟鎹被鍨嬶紝閰嶅瀹屾垚鍚勭绠楁湳杩愮畻銆佹瘮杈冦€佺被鍨嬭浆鎹㈢瓑鎿嶄綔銆傝繖閲屽悓鏃惰褰曚簡鏁版嵁鐨勫€间笌绫诲瀷銆?
+ * 褰撻渶瑕佸鍊煎仛杩愮畻鏃讹紝寤鸿浣跨敤绫讳技 Value::add 鐨勬搷浣滆€屼笉鏄? DataType::add銆傚湪杩涜杩愮畻鍓嶏紝搴旇璁剧疆濂界粨鏋滅殑绫诲瀷锛?
+ * 姣斿杩涜涓や釜INT绫诲瀷鐨勯櫎娉曡繍绠楁椂锛岀粨鏋滅被鍨嬪簲璇ヨ缃负FLOAT銆?
  */
 class Value final
 {
@@ -85,6 +85,10 @@ public:
 
   static RC cast_to(const Value &value, AttrType to_type, Value &result)
   {
+    if (value.is_null()) {
+      result.set_null(to_type);
+      return RC::SUCCESS;
+    }
     return DataType::type_instance(value.attr_type())->cast_to(value, to_type, result);
   }
 
@@ -93,6 +97,8 @@ public:
   void set_data(const char *data, int length) { this->set_data(const_cast<char *>(data), length); }
   void set_value(const Value &value);
   void set_boolean(bool val);
+  void set_null(AttrType type = AttrType::UNDEFINED);
+  bool is_null() const { return is_null_; }
 
   string to_string() const;
 
@@ -105,8 +111,8 @@ public:
 
 public:
   /**
-   * 获取对应的�?
-   * 如果当前的类型与期望获取的类型不符，就会执行转换操作
+   * 鑾峰彇瀵瑰簲鐨勫€?
+   * 濡傛灉褰撳墠鐨勭被鍨嬩笌鏈熸湜鑾峰彇鐨勭被鍨嬩笉绗︼紝灏变細鎵ц杞崲鎿嶄綔
    */
   int      get_int() const;
   float    get_float() const;
@@ -124,6 +130,7 @@ public:
 private:
   AttrType attr_type_ = AttrType::UNDEFINED;
   int      length_    = 0;
+  bool     is_null_   = false;
 
   union Val
   {
@@ -133,6 +140,6 @@ private:
     char   *pointer_value_;
   } value_ = {.int_value_ = 0};
 
-  /// 是否申请并占有内�?, 目前对于 CHARS 类型 own_data_ 为true, 其余类型 own_data_ 为false
+  /// 鏄惁鐢宠骞跺崰鏈夊唴瀛?, 鐩墠瀵逛簬 CHARS 绫诲瀷 own_data_ 涓簍rue, 鍏朵綑绫诲瀷 own_data_ 涓篺alse
   bool own_data_ = false;
 };

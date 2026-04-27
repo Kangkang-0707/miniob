@@ -64,8 +64,8 @@ RC Table::create(Db *db, int32_t table_id, const char *path, const char *name, c
 
   RC rc = RC::SUCCESS;
 
-  // 使用 table_name.table记录一个表的元数据
-  // 判断表文件是否已经存在
+  // 浣跨敤 table_name.table璁板綍涓€涓〃鐨勫厓鏁版嵁
+  // 鍒ゆ柇琛ㄦ枃浠舵槸鍚﹀凡缁忓瓨鍦?
   int fd = ::open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
   if (fd < 0) {
     if (EEXIST == errno) {
@@ -78,7 +78,7 @@ RC Table::create(Db *db, int32_t table_id, const char *path, const char *name, c
 
   close(fd);
 
-  // 创建文件
+  // 鍒涘缓鏂囦欢
   const vector<FieldMeta> *trx_fields = db->trx_kit().trx_fields();
   if ((rc = table_meta_.init(table_id, name, trx_fields, attributes, primary_keys, storage_format, storage_engine)) != RC::SUCCESS) {
     LOG_ERROR("Failed to init table meta. name:%s, ret:%d", name, rc);
@@ -92,7 +92,7 @@ RC Table::create(Db *db, int32_t table_id, const char *path, const char *name, c
     return RC::IOERR_OPEN;
   }
 
-  // 记录元数据到文件中
+  // 璁板綍鍏冩暟鎹埌鏂囦欢涓?
   table_meta_.serialize(fs);
   fs.close();
 
@@ -127,7 +127,7 @@ RC Table::create(Db *db, int32_t table_id, const char *path, const char *name, c
 
 RC Table::open(Db *db, const char *meta_file, const char *base_dir)
 {
-  // 加载元数据文件
+  // 鍔犺浇鍏冩暟鎹枃浠?
   fstream fs;
   string  meta_file_path = string(base_dir) + common::FILE_PATH_SPLIT_STR + meta_file;
   fs.open(meta_file_path, ios_base::in | ios_base::binary);
@@ -144,7 +144,7 @@ RC Table::open(Db *db, const char *meta_file, const char *base_dir)
 
   db_       = db;
 
-  // // 加载数据文件
+  // // 鍔犺浇鏁版嵁鏂囦欢
   // RC rc = init_record_handler(base_dir);
   // if (rc != RC::SUCCESS) {
   //   LOG_ERROR("Failed to open table %s due to init record handler failed.", base_dir);
@@ -213,14 +213,14 @@ const TableMeta &Table::table_meta() const { return table_meta_; }
 RC Table::make_record(int value_num, const Value *values, Record &record)
 {
   RC rc = RC::SUCCESS;
-  // 检查字段类型是否一致
+  // 妫€鏌ュ瓧娈电被鍨嬫槸鍚︿竴鑷?
   if (value_num + table_meta_.sys_field_num() != table_meta_.field_num()) {
     LOG_WARN("Input values don't match the table's schema, table name:%s", table_meta_.name());
     return RC::SCHEMA_FIELD_MISSING;
   }
 
   const int normal_field_start_index = table_meta_.sys_field_num();
-  // 复制所有字段的值
+  // 澶嶅埗鎵€鏈夊瓧娈电殑鍊?
   int   record_size = table_meta_.record_size();
   char *record_data = (char *)malloc(record_size);
   memset(record_data, 0, record_size);
@@ -228,6 +228,17 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
   for (int i = 0; i < value_num && OB_SUCC(rc); i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value &    value = values[i];
+    if (value.is_null()) {
+      if (!field->nullable()) {
+        rc = RC::INVALID_ARGUMENT;
+        LOG_WARN("field does not allow null. table=%s, field=%s", table_meta_.name(), field->name());
+        break;
+      }
+      set_field_null(record_data, field->field_id(), true);
+      continue;
+    }
+
+    set_field_null(record_data, field->field_id(), false);
     if (field->type() != value.attr_type()) {
       Value real_value;
       rc = Value::cast_to(value, field->type(), real_value);
@@ -253,6 +264,11 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
 
 RC Table::set_value_to_record(char *record_data, const Value &value, const FieldMeta *field)
 {
+  if (value.is_null()) {
+    set_field_null(record_data, field->field_id(), true);
+    return RC::SUCCESS;
+  }
+
   size_t       copy_len = field->len();
   const size_t data_len = value.length();
   if (field->type() == AttrType::CHARS) {
@@ -262,6 +278,34 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
   }
   memcpy(record_data + field->offset(), value.data(), copy_len);
   return RC::SUCCESS;
+}
+
+void Table::set_field_null(char *record_data, int field_id, bool is_null) const
+{
+  if (table_meta_.null_bitmap_size() <= 0 || field_id < 0) {
+    return;
+  }
+  char *bitmap = record_data + table_meta_.null_bitmap_offset();
+  const int byte_idx = field_id / 8;
+  const int bit_idx  = field_id % 8;
+  const unsigned char mask = static_cast<unsigned char>(1U << bit_idx);
+  if (is_null) {
+    bitmap[byte_idx] = static_cast<char>(static_cast<unsigned char>(bitmap[byte_idx]) | mask);
+  } else {
+    bitmap[byte_idx] = static_cast<char>(static_cast<unsigned char>(bitmap[byte_idx]) & ~mask);
+  }
+}
+
+bool Table::field_is_null(const char *record_data, int field_id) const
+{
+  if (table_meta_.null_bitmap_size() <= 0 || field_id < 0) {
+    return false;
+  }
+  const char *bitmap = record_data + table_meta_.null_bitmap_offset();
+  const int byte_idx = field_id / 8;
+  const int bit_idx  = field_id % 8;
+  const unsigned char mask = static_cast<unsigned char>(1U << bit_idx);
+  return (static_cast<unsigned char>(bitmap[byte_idx]) & mask) != 0;
 }
 
 RC Table::get_record_scanner(RecordScanner *&scanner, Trx *trx, ReadWriteMode mode)
@@ -274,9 +318,9 @@ RC Table::get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadWriteMode m
   return engine_->get_chunk_scanner(scanner, trx, mode);
 }
 
-RC Table::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name)
+RC Table::create_index(Trx *trx, const vector<const FieldMeta *> &field_metas, const char *index_name, bool unique)
 {
-  return engine_->create_index(trx, field_meta, index_name);
+  return engine_->create_index(trx, field_metas, index_name, unique);
 }
 
 RC Table::delete_record(const Record &record)

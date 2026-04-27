@@ -99,7 +99,9 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         INNER
         JOIN
         IN
+        IS
         NOT
+        NULL_T
         LIKE
         AND
         SET
@@ -112,6 +114,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         FORMAT
         PRIMARY
         KEY
+        UNIQUE
         ANALYZE
         FIELDS
         TERMINATED
@@ -175,6 +178,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
+%type <number>              nullability
 %type <value_list>          value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
@@ -252,7 +256,7 @@ command_wrapper:
   | exit_stmt
     ;
 
-exit_stmt:      
+exit_stmt:
     EXIT {
       (void)yynerrs;  // 这么写为了消除yynerrs未使用的告警。如果你有更好的方法欢迎提PR
       $$ = new ParsedSqlNode(SCF_EXIT);
@@ -314,13 +318,24 @@ desc_table_stmt:
     ;
 
 create_index_stmt:    /*create index 语句的语法解析树*/
-    CREATE INDEX ID ON ID LBRACE ID RBRACE
+    CREATE INDEX ID ON ID LBRACE attr_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
       CreateIndexSqlNode &create_index = $$->create_index;
       create_index.index_name = $3;
       create_index.relation_name = $5;
-      create_index.attribute_name = $7;
+      create_index.attribute_names.swap(*$7);
+      delete $7;
+    }
+    | CREATE UNIQUE INDEX ID ON ID LBRACE attr_list RBRACE
+    {
+      $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
+      CreateIndexSqlNode &create_index = $$->create_index;
+      create_index.index_name = $4;
+      create_index.relation_name = $6;
+      create_index.attribute_names.swap(*$8);
+      create_index.unique = true;
+      delete $8;
     }
     ;
 
@@ -352,7 +367,7 @@ create_table_stmt:    /*create table 语句的语法解析树*/
       }
     }
     ;
-    
+
 attr_def_list:
     attr_def
     {
@@ -367,21 +382,37 @@ attr_def_list:
       delete $3;
     }
     ;
-    
+
 attr_def:
-    ID type LBRACE number RBRACE 
+    ID type LBRACE number RBRACE nullability
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      $$->nullable = $6 != 0;
     }
-    | ID type
+    | ID type nullability
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      $$->nullable = $3 != 0;
+    }
+    ;
+nullability:
+    /* empty */
+    {
+      $$ = 0;
+    }
+    | NULL_T
+    {
+      $$ = 1;
+    }
+    | NOT NULL_T
+    {
+      $$ = 0;
     }
     ;
 number:
@@ -422,7 +453,7 @@ attr_list:
     ;
 
 insert_stmt:        /*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES LBRACE value_list RBRACE 
+    INSERT INTO ID VALUES LBRACE value_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_INSERT);
       $$->insertion.relation_name = $3;
@@ -438,7 +469,7 @@ value_list:
       $$->emplace_back(*$1);
       delete $1;
     }
-    | value_list COMMA value { 
+    | value_list COMMA value {
       $$ = $1;
       $$->emplace_back(*$3);
       delete $3;
@@ -458,6 +489,10 @@ value:
       $$ = new Value(tmp);
       free(tmp);
     }
+    | NULL_T {
+      $$ = new Value();
+      $$->set_null();
+    }
     ;
 storage_format:
     /* empty */
@@ -469,9 +504,9 @@ storage_format:
       $$ = $4;
     }
     ;
-    
+
 delete_stmt:    /*  delete 语句的语法解析树*/
-    DELETE FROM ID where 
+    DELETE FROM ID where
     {
       $$ = new ParsedSqlNode(SCF_DELETE);
       $$->deletion.relation_name = $3;
@@ -482,12 +517,24 @@ delete_stmt:    /*  delete 语句的语法解析树*/
     }
     ;
 update_stmt:      /*  update 语句的语法解析树*/
-    UPDATE ID SET ID EQ value where 
+    UPDATE ID SET ID EQ value where
     {
       $$ = new ParsedSqlNode(SCF_UPDATE);
       $$->update.relation_name = $2;
       $$->update.attribute_name = $4;
       $$->update.value = *$6;
+      if ($7 != nullptr) {
+        $$->update.conditions.swap(*$7);
+        delete $7;
+      }
+    }
+    | UPDATE ID SET ID EQ sub_query where
+    {
+      $$ = new ParsedSqlNode(SCF_UPDATE);
+      $$->update.relation_name = $2;
+      $$->update.attribute_name = $4;
+      $$->update.value_is_sub_query = 1;
+      $$->update.value_sub_query.reset($6);
       if ($7 != nullptr) {
         $$->update.conditions.swap(*$7);
         delete $7;
@@ -681,7 +728,7 @@ where:
       $$ = nullptr;
     }
     | WHERE condition_list {
-      $$ = $2;  
+      $$ = $2;
     }
     ;
 condition_list:
@@ -713,7 +760,7 @@ condition:
       delete $1;
       delete $3;
     }
-    | value comp_op value 
+    | value comp_op value
     {
       $$ = new ConditionSqlNode;
       $$->left_is_attr = 0;
@@ -819,6 +866,38 @@ condition:
       delete $1;
       delete $5;
     }
+    | rel_attr IS NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->comp = IS_NULL_OP;
+      delete $1;
+    }
+    | rel_attr IS NOT NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->comp = IS_NOT_NULL_OP;
+      delete $1;
+    }
+    | value IS NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 0;
+      $$->left_value = *$1;
+      $$->comp = IS_NULL_OP;
+      delete $1;
+    }
+    | value IS NOT NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 0;
+      $$->left_value = *$1;
+      $$->comp = IS_NOT_NULL_OP;
+      delete $1;
+    }
     ;
 
 comp_op:
@@ -849,7 +928,7 @@ load_data_stmt:
     LOAD DATA INFILE SSS INTO TABLE ID fields_terminated_by enclosed_by
     {
       char *tmp_file_name = common::substr($4, 1, strlen($4) - 2);
-      
+
       $$ = new ParsedSqlNode(SCF_LOAD_DATA);
       $$->load_data.relation_name = $7;
       $$->load_data.file_name = tmp_file_name;

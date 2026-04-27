@@ -170,7 +170,12 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
                                      ? static_cast<Expression *>(new FieldExpr(filter_obj_right.field))
                                      : static_cast<Expression *>(new ValueExpr(filter_obj_right.value)));
 
-    if (left->value_type() != right->value_type()) {
+    const bool is_null_check = filter_unit->comp() == IS_NULL_OP || filter_unit->comp() == IS_NOT_NULL_OP;
+    const bool has_null_value =
+        (left->type() == ExprType::VALUE && static_cast<ValueExpr *>(left.get())->get_value().is_null()) ||
+        (right->type() == ExprType::VALUE && static_cast<ValueExpr *>(right.get())->get_value().is_null());
+
+    if (!is_null_check && !has_null_value && left->value_type() != right->value_type()) {
       auto left_to_right_cost = implicit_cast_cost(left->value_type(), right->value_type());
       auto right_to_left_cost = implicit_cast_cost(right->value_type(), left->value_type());
       if (left_to_right_cost <= right_to_left_cost && left_to_right_cost != INT32_MAX) {
@@ -280,7 +285,7 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
   }
 
   unique_ptr<LogicalOperator> update_oper(
-      new UpdateLogicalOperator(table, update_stmt->field_meta(), update_stmt->value()));
+      new UpdateLogicalOperator(table, update_stmt->field_meta(), update_stmt->value(), update_stmt->value_sub_query()));
 
   if (predicate_oper) {
     predicate_oper->add_child(std::move(table_get_oper));
@@ -355,7 +360,7 @@ RC LogicalPlanGenerator::create_group_by_plan(SelectStmt *select_stmt, unique_pt
     }
     return rc;
   };
-  
+
 
   for (unique_ptr<Expression> &expression : query_expressions) {
     bind_group_by_expr(expression);

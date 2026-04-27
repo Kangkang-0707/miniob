@@ -11,16 +11,19 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "common/value.h"
+#include "common/lang/memory.h"
 #include "sql/stmt/stmt.h"
 
 class Table;
 class FieldMeta;
 class FilterStmt;
+class ParsedSqlNode;
 
 class UpdateStmt : public Stmt
 {
 public:
-  UpdateStmt(Table *table, const FieldMeta *field_meta, const Value &value, FilterStmt *filter_stmt);
+  UpdateStmt(Table *table, const FieldMeta *field_meta, const Value &value, shared_ptr<ParsedSqlNode> value_sub_query,
+      FilterStmt *filter_stmt);
   ~UpdateStmt() override;
 
   StmtType type() const override { return StmtType::UPDATE; }
@@ -28,6 +31,8 @@ public:
   Table            *table() const { return table_; }
   const FieldMeta  *field_meta() const { return field_meta_; }
   const Value      &value() const { return value_; }
+  bool              value_is_sub_query() const { return value_is_sub_query_; }
+  shared_ptr<ParsedSqlNode> value_sub_query() const { return value_sub_query_; }
   FilterStmt       *filter_stmt() const { return filter_stmt_; }
 
   static RC create(Db *db, const UpdateSqlNode &update_sql, Stmt *&stmt);
@@ -36,5 +41,7 @@ private:
   Table           *table_       = nullptr;
   const FieldMeta *field_meta_  = nullptr;
   Value            value_;
+  bool             value_is_sub_query_ = false;
+  shared_ptr<ParsedSqlNode> value_sub_query_;
   FilterStmt      *filter_stmt_ = nullptr;
 };

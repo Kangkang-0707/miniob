@@ -53,6 +53,8 @@ enum CompOp
   LESS_THAN,    ///< "<"
   GREAT_EQUAL,  ///< ">="
   GREAT_THAN,   ///< ">"
+  IS_NULL_OP,   ///< "is null"
+  IS_NOT_NULL_OP,  ///< "is not null"
   LIKE_OP,      ///< "like"
   NOT_LIKE_OP,  ///< "not like"
   IN_OP,        ///< "in"
@@ -151,6 +153,8 @@ struct UpdateSqlNode
   string                   relation_name;   ///< Relation to update
   string                   attribute_name;  ///< 更新的字段，仅支持一个字段
   Value                    value;           ///< 更新的值，仅支持一个字段
+  int                      value_is_sub_query = 0;
+  shared_ptr<ParsedSqlNode> value_sub_query;
   vector<ConditionSqlNode> conditions;
 };
 
@@ -164,6 +168,7 @@ struct AttrInfoSqlNode
   AttrType type;    ///< Type of attribute
   string   name;    ///< Attribute name
   size_t   length;  ///< Length of attribute
+  bool     nullable = false;
 };
 
 /**
@@ -207,9 +212,10 @@ struct AnalyzeTableSqlNode
  */
 struct CreateIndexSqlNode
 {
-  string index_name;      ///< Index name
-  string relation_name;   ///< Relation name
-  string attribute_name;  ///< Attribute name
+  string         index_name;      ///< Index name
+  string         relation_name;   ///< Relation name
+  vector<string> attribute_names; ///< Attribute names
+  bool           unique = false;
 };
 
 /**
