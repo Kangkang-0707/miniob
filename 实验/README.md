@@ -7,21 +7,28 @@
 - `date.md`
 - `drop-table.md`
 - `update.md`
+- `aggregation-func.md`
+- `like.md`
 - `join-tables.md`
 - `simple-sub-query.md`
+- `总汇报提纲.md`
+- `中等题汇报提纲.md`
 
 推荐命名方式：
 
 - `date.md`
-- `text.md`
-- `null.md`
+- `drop-table.md`
 - `update.md`
+- `aggregation-func.md`
+- `like.md`
+- `join-tables.md`
+- `simple-sub-query.md`
 
 每篇文档建议包含：
 
 1. 题目目标
-2. 需要改动的模块
-3. 具体实现步骤
+2. 总体思路
+3. 修改了哪些模块
 4. 关键细节和易错点
-5. 测试方法
-6. 最终结论
+5. 手工测试方法
+6. 最终效果

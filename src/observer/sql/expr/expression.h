@@ -450,7 +450,7 @@ public:
 
   unique_ptr<Expression> copy() const override
   {
-    return make_unique<UnboundAggregateExpr>(aggregate_name_.c_str(), child_->copy());
+    return make_unique<UnboundAggregateExpr>(aggregate_name_.c_str(), child_ ? child_->copy() : nullptr);
   }
 
   const char *aggregate_name() const { return aggregate_name_.c_str(); }
@@ -458,7 +458,7 @@ public:
   unique_ptr<Expression> &child() { return child_; }
 
   RC       get_value(const Tuple &tuple, Value &value) const override { return RC::INTERNAL; }
-  AttrType value_type() const override { return child_->value_type(); }
+  AttrType value_type() const override { return child_ ? child_->value_type() : AttrType::UNDEFINED; }
 
 private:
   string                 aggregate_name_;

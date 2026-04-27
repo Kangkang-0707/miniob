@@ -100,6 +100,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         JOIN
         IN
         NOT
+        LIKE
         AND
         SET
         ON
@@ -182,9 +183,10 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <key_list>            attr_list
 %type <relation_list>       rel_list
 %type <relation_sql>        from_clause
-%type <expression>          expression
-%type <expression>          aggregate_expression
-%type <expression_list>     expression_list
+  %type <expression>          expression
+  %type <expression>          aggregate_expression
+  %type <expression_list>     expression_list
+  %type <expression_list>     aggregate_argument_list
 %type <expression_list>     group_by
 %type <cstring>             fields_terminated_by
 %type <cstring>             enclosed_by
@@ -592,8 +594,33 @@ expression:
     ;
 
 aggregate_expression:
-    ID LBRACE expression RBRACE {
-      $$ = create_aggregate_expression($1, $3, sql_string, &@$);
+    ID LBRACE RBRACE {
+      $$ = create_aggregate_expression($1, nullptr, sql_string, &@$);
+    }
+    | ID LBRACE aggregate_argument_list RBRACE {
+      Expression *child = nullptr;
+      if ($3 != nullptr && $3->size() == 1) {
+        child = $3->front().release();
+      }
+      $$ = create_aggregate_expression($1, child, sql_string, &@$);
+      delete $3;
+    }
+    ;
+
+aggregate_argument_list:
+    expression
+    {
+      $$ = new vector<unique_ptr<Expression>>;
+      $$->emplace_back($1);
+    }
+    | expression COMMA aggregate_argument_list
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new vector<unique_ptr<Expression>>;
+      }
+      $$->emplace($$->begin(), $1);
     }
     ;
 
@@ -801,6 +828,8 @@ comp_op:
     | LE { $$ = LESS_EQUAL; }
     | GE { $$ = GREAT_EQUAL; }
     | NE { $$ = NOT_EQUAL; }
+    | LIKE { $$ = LIKE_OP; }
+    | NOT LIKE { $$ = NOT_LIKE_OP; }
     ;
 
 // your code here

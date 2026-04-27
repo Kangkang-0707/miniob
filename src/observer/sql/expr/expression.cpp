@@ -15,8 +15,46 @@ See the Mulan PSL v2 for more details. */
 #include "sql/expr/expression.h"
 #include "sql/expr/tuple.h"
 #include "sql/expr/arithmetic_operator.hpp"
+#include <regex>
 
 using namespace std;
+
+namespace {
+bool like_match(const string &value, const string &pattern)
+{
+  string regex_pattern;
+  regex_pattern.reserve(pattern.size() * 2 + 2);
+  regex_pattern += '^';
+
+  for (char ch : pattern) {
+    switch (ch) {
+      case '%': regex_pattern += ".*"; break;
+      case '_': regex_pattern += '.'; break;
+      case '\\':
+      case '.':
+      case '^':
+      case '$':
+      case '|':
+      case '(':
+      case ')':
+      case '[':
+      case ']':
+      case '{':
+      case '}':
+      case '*':
+      case '+':
+      case '?':
+        regex_pattern += '\\';
+        regex_pattern += ch;
+        break;
+      default: regex_pattern += ch; break;
+    }
+  }
+
+  regex_pattern += '$';
+  return regex_match(value, regex(regex_pattern));
+}
+}  // namespace
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
@@ -141,6 +179,16 @@ ComparisonExpr::~ComparisonExpr() {}
 
 RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &result) const
 {
+  if (comp_ == LIKE_OP || comp_ == NOT_LIKE_OP) {
+    if (left.attr_type() != AttrType::CHARS || right.attr_type() != AttrType::CHARS) {
+      return RC::INVALID_ARGUMENT;
+    }
+
+    bool match = like_match(left.get_string(), right.get_string());
+    result = comp_ == LIKE_OP ? match : !match;
+    return RC::SUCCESS;
+  }
+
   RC  rc         = RC::SUCCESS;
   int cmp_result = left.compare(right);
   result         = false;

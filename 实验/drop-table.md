@@ -1,145 +1,176 @@
 # drop-table
 
-## 目标
+## 1. 题目目标
 
-支持：
+实现：
 
 ```sql
 DROP TABLE table_name;
 ```
 
-并满足这些行为：
+并满足：
 
 - 可以删除空表和非空表
-- 删除后原表不可再访问
-- 同名表可以重新创建
-- 删除不存在的表要失败
-- 删除带索引的表时，要把索引文件一起清理掉
+- 删除后原表不能继续访问
+- 可以重新创建同名表
+- 删除不存在的表时失败
+- 删除带索引的表时要把索引文件一起清理
 
-## 实现主线
+这道题属于 DDL，重点是把“表对象、元数据文件、数据文件、索引文件”一起清理干净。
 
-`drop-table` 是 DDL，走的是 `stmt -> executor -> db` 这条线，而不是查询计划。
+## 2. 总体思路
 
-这次主要补了 4 层：
+这题不像查询或更新那样要走复杂计划，而是比较直接地走：
 
-1. parser 之后的语义对象
-2. command executor 的分发
-3. `Db::drop_table`
-4. `DefaultHandler::drop_table`
+`Stmt -> Executor -> Db`
 
-## 具体步骤
+也就是说：
 
-### 1. 新增 `DropTableStmt`
+- 先把 SQL 变成 `DropTableStmt`
+- 再由 `CommandExecutor` 分发
+- 最终落到 `Db::drop_table`
 
-位置：
+## 3. 具体实现
+
+### 3.1 Resolve 阶段：新增 DropTableStmt
+
+修改位置：
 
 - `src/observer/sql/stmt/drop_table_stmt.h`
 - `src/observer/sql/stmt/drop_table_stmt.cpp`
 
-作用：
+这里主要负责：
 
-- 把 parser 解析出来的 `DropTableSqlNode` 转成内部 `Stmt`
-- 在 `create` 阶段检查表是否存在
+- 把 parser 结果转成内部 `Stmt`
+- 检查要删除的表是否存在
 
-### 2. 在 `Stmt::create_stmt` 中接入
+### 3.2 Stmt 分发：接入 DROP TABLE
 
-位置：
+修改位置：
 
 - `src/observer/sql/stmt/stmt.cpp`
 
-补充：
+把 `SCF_DROP_TABLE` 接到 `Stmt::create_stmt` 中，这样 SQL 解析之后才能真正生成 `DropTableStmt`。
 
-- `SCF_DROP_TABLE -> DropTableStmt::create(...)`
+### 3.3 Executor 层：新增 DropTableExecutor
 
-这样 SQL 解析之后才能真正生成 `DROP_TABLE` 类型的语句对象。
-
-### 3. 新增 `DropTableExecutor`
-
-位置：
+修改位置：
 
 - `src/observer/sql/executor/drop_table_executor.h`
 - `src/observer/sql/executor/drop_table_executor.cpp`
-
-作用：
-
-- 从 session 拿到当前数据库
-- 调用 `db->drop_table(table_name)`
-
-### 4. 在 `CommandExecutor` 中分发
-
-位置：
-
 - `src/observer/sql/executor/command_executor.cpp`
 
-补充：
+这里的作用是：
 
-- `StmtType::DROP_TABLE` 分支
+- 从 session 中拿到当前数据库
+- 调用 `db->drop_table(table_name)`
 
-因为 `drop-table` 属于 DDL，不生成物理执行计划，而是直接走 executor。
+因为 `drop-table` 是 DDL，所以它不需要走查询计划，而是直接由 executor 执行。
 
-### 5. 实现 `Db::drop_table`
+### 3.4 Db 层：实现真正的 drop_table
 
-位置：
+修改位置：
 
 - `src/observer/storage/db/db.h`
 - `src/observer/storage/db/db.cpp`
 
-这里是核心逻辑：
+这是这道题的核心。
+
+最终做的事情包括：
 
 1. 检查表名是否合法
-2. 检查表是否已打开
-3. 先收集该表的索引名
-4. 从 `opened_tables_` 中移除
-5. `delete table`，让表对象关闭数据文件和索引文件句柄
-6. 删除表相关文件：
+2. 检查目标表是否存在
+3. 先收集该表的索引信息
+4. 从 `opened_tables_` 中移除这张表
+5. 析构表对象，关闭相关文件句柄
+6. 删除磁盘文件：
    - `.table`
    - `.data`
    - `.lob`
-   - 每个 `.index`
+   - 各个 `.index`
 
-这样可以保证：
+### 3.5 补全 DefaultHandler::drop_table
 
-- 表元数据不会残留
-- 数据文件不会残留
-- 索引文件不会残留
-
-### 6. 补 `DefaultHandler::drop_table`
-
-位置：
+修改位置：
 
 - `src/observer/storage/default/default_handler.cpp`
 
-虽然当前主流程更多直接走 `Db`，但这里原来是空实现，顺手补上后整体链路会更完整。
+虽然主逻辑主要走 `Db`，但这里补上之后，整体接口链路更完整，也和 `create_table` 的结构更对称。
 
-## 细节考虑
+## 4. 这道题的关键难点
 
-### 为什么要先记录索引名再删表对象
+### 4.1 难点一：不是只删一份文件
 
-因为 `delete table` 后就没法再通过 `table_meta()` 取索引列表了，所以要先把索引文件名依赖的信息拿出来。
+表在 MiniOB 里不只是一个逻辑名字，它背后至少关联：
 
-### 为什么先 `delete table` 再删磁盘文件
+- 表元数据文件
+- 数据文件
+- 可能还有 lob 文件
+- 多个索引文件
 
-因为表对象内部持有数据文件和索引文件句柄，先析构更稳，避免“文件还开着就删”的问题。
+所以 `DROP TABLE` 不能理解成“删个表对象”就结束，而是要把一整组资源一起清掉。
 
-### 为什么 `DROP TABLE` 后还要 `sync`
+### 4.2 难点二：删除顺序
 
-`CommandExecutor` 里原本就会对 DDL 执行后做一次 `db->sync()`，这样元数据和日志状态更一致。
+这里顺序很重要。
 
-## 手工验证建议
+先收集索引信息，再析构表对象，再删磁盘文件，原因是：
+
+- 表对象析构前还持有文件句柄
+- 析构后再从表元数据里取索引列表就不方便了
+
+所以必须先保存好需要删除的索引文件名，再进行后续清理。
+
+### 4.3 难点三：删除后状态要一致
+
+题目不只是要求“删掉”，还要求：
+
+- 删除后原表不能访问
+- 同名表能重新创建
+
+这说明：
+
+- 内存中的 opened table 状态
+- 磁盘上的元数据和数据文件
+
+都必须同步清理干净。
+
+## 5. 最终改动的核心文件
+
+- `src/observer/sql/stmt/drop_table_stmt.h`
+- `src/observer/sql/stmt/drop_table_stmt.cpp`
+- `src/observer/sql/stmt/stmt.cpp`
+- `src/observer/sql/executor/drop_table_executor.h`
+- `src/observer/sql/executor/drop_table_executor.cpp`
+- `src/observer/sql/executor/command_executor.cpp`
+- `src/observer/storage/db/db.h`
+- `src/observer/storage/db/db.cpp`
+- `src/observer/storage/default/default_handler.cpp`
+
+## 6. 手工验证要点
 
 ```sql
-CREATE TABLE t(id int, num int);
-INSERT INTO t VALUES (1, 10);
-CREATE INDEX idx_num ON t(num);
-DROP TABLE t;
-INSERT INTO t VALUES (2, 20);
-CREATE TABLE t(id int, num int);
+CREATE TABLE drop_table_test(id int, num int);
+INSERT INTO drop_table_test VALUES (1, 10);
+CREATE INDEX idx_num ON drop_table_test(num);
+
+DROP TABLE drop_table_test;
+INSERT INTO drop_table_test VALUES (2, 20);
+CREATE TABLE drop_table_test(id int, num int);
 DROP TABLE not_exist_table;
 ```
 
-预期：
+验证点：
 
-- 第一次 `DROP TABLE t` 成功
-- 删除后再插入失败
-- 重建同名表成功
+- `DROP TABLE` 成功
+- 删除后不能继续插入
+- 可以重建同名表
 - 删除不存在的表失败
+
+## 7. 汇报时可以怎么讲
+
+你可以把这题概括成三句：
+
+1. `drop-table` 是典型 DDL，主链是 `Stmt -> Executor -> Db`，不是查询计划。
+2. 真正要做的是把表对象、元数据文件、数据文件和索引文件一起清理干净。
+3. 这题的关键不是语法，而是删除顺序和清理的一致性。

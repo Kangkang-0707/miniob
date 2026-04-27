@@ -1,225 +1,257 @@
-# Date 题实现记录
+# date
 
 ## 1. 题目目标
 
-为 MiniOB 增加 `DATE` 类型支持，至少完成下面这些功能：
+在 MiniOB 现有 `int / float / char` 类型的基础上，新增 `date` 类型支持，并完成下面这些功能：
 
-1. `CREATE TABLE` 时支持 `date` 字段。
-2. `INSERT` 时支持合法日期写入。
-3. 非法日期要拒绝插入。
-4. `WHERE` 条件中支持日期比较。
-5. 查询结果能够按标准格式输出日期。
+- `CREATE TABLE` 时支持 `date` 字段
+- `INSERT` 时支持合法日期写入
+- 非法日期输入返回 `FAILURE`
+- `WHERE` 条件中支持日期比较
+- `date` 字段可以建立索引
+- 查询输出时按标准日期格式显示
+
+这道题本质上不是“加一个关键字”，而是要为 MiniOB 新增一种完整的数据类型。
 
 ## 2. 总体思路
 
-这道题的本质不是只加一个关键字，而是新增一种完整的数据类型，让它进入 MiniOB 的整条处理链路：
+参考题目思路里的层次，这道题要从前到后打通整条链路：
 
-1. SQL 语法识别 `date`
+1. Parse 层识别 `date`
 2. 类型系统识别 `DATES`
-3. 插入时把字符串日期转成内部值
-4. 记录和索引支持存储这个值
-5. 查询时支持日期比较
-6. 输出时把内部值转回日期字符串
+3. 插入时把字符串日期转换成内部值
+4. 存储层和索引层正确保存这个值
+5. 查询层支持比较
+6. 输出层支持格式化显示
+
+所以真正的工作不是单点修改，而是把 `DATE` 接入 MiniOB 的完整处理流程。
 
 ## 3. 内部表示设计
 
-日期内部使用 4 字节整数 `YYYYMMDD` 存储，例如：
+这里最终采用的是：
+
+- 日期内部按 4 字节整数 `YYYYMMDD` 存储
+
+例如：
 
 - `2020-01-21` -> `20200121`
 - `2020-1-1` -> `20200101`
 
-这样设计的原因：
+这样做有三个好处：
 
-1. 占用空间小，和 `INT` 一样方便存储。
-2. 日期先后顺序和整数大小顺序一致。
-3. 比较和索引都可以直接复用整数逻辑。
+1. 存储简单，和 `INT` 一样容易落盘
+2. 日期先后顺序和整数大小顺序一致
+3. 比较和索引可以复用整数逻辑
 
-## 4. 具体实现步骤
+这也是这道题最核心的设计点。
 
-### 4.1 扩展 parser
+## 4. 具体实现
 
-需要让 SQL 解析器识别 `date`：
+### 4.1 Parse 层：识别 date
 
-1. 在 `src/observer/sql/parser/lex_sql.l` 中增加 `DATE` 关键字。
-2. 在 `src/observer/sql/parser/yacc_sql.y` 中把 `date` 映射到 `AttrType::DATES`。
+修改位置：
 
-完成后，下面语句才能通过：
+- `src/observer/sql/parser/lex_sql.l`
+- `src/observer/sql/parser/yacc_sql.y`
+
+做的事情：
+
+- 增加 `DATE` 关键字
+- 把 `date` 映射到 `AttrType::DATES`
+
+这样下面这条语句才能通过：
 
 ```sql
 CREATE TABLE date_table(id int, u_date date);
 ```
 
-### 4.2 扩展类型系统
+### 4.2 类型系统：注册 DATES 和 DateType
 
-需要把 `DATE` 注册为新的类型：
+修改位置：
 
-1. 在 `src/observer/common/type/attr_type.h` 中增加 `AttrType::DATES`
-2. 在 `src/observer/common/type/attr_type.cpp` 中补充类型字符串映射
-3. 在 `src/observer/common/type/data_type.h` / `data_type.cpp` 中注册 `DateType`
-4. 新增 `src/observer/common/type/date_type.h`
-5. 新增 `src/observer/common/type/date_type.cpp`
+- `src/observer/common/type/attr_type.h`
+- `src/observer/common/type/attr_type.cpp`
+- `src/observer/common/type/data_type.h`
+- `src/observer/common/type/data_type.cpp`
+- `src/observer/common/type/date_type.h`
+- `src/observer/common/type/date_type.cpp`
 
-这样系统才知道 `DATES` 对应的行为实现是谁。
+做的事情：
 
-### 4.3 实现 DateType
+- 新增 `AttrType::DATES`
+- 注册 `DateType`
+- 让系统知道 `DATES` 对应的比较、转换、格式化逻辑由 `DateType` 负责
 
-`DateType` 主要完成四件事：
+### 4.3 DateType：日期解析、校验、比较、输出
+
+核心文件：
+
+- `src/observer/common/type/date_type.cpp`
+
+主要完成 4 件事：
 
 1. 解析字符串日期
-2. 校验日期是否合法
+2. 判断日期是否合法
 3. 比较两个日期大小
-4. 输出标准日期字符串
+4. 把内部整数格式转回日期字符串
 
-核心逻辑在 `src/observer/common/type/date_type.cpp`。
+### 4.4 日期合法性校验
 
-#### 日期解析规则
-
-支持：
+支持的输入格式：
 
 - `YYYY-MM-DD`
 - `YYYY-M-D`
 - `YYYY-M-DD`
 - `YYYY-MM-D`
 
-约束：
+校验规则：
 
-1. 年必须是 4 位数字
-2. 月和日允许 1 到 2 位数字
-3. 必须恰好有两个 `-`
-4. 月份必须在 `1~12`
-5. 日期必须在对应月份合法范围内
-6. 2 月 29 日必须满足闰年规则
-
-#### 闰年判断
-
-规则是：
-
-1. 能被 400 整除是闰年
-2. 能被 4 整除但不能被 100 整除是闰年
+- 年必须是 4 位数字
+- 月和日允许 1 到 2 位数字
+- 月份范围必须在 `1~12`
+- 日期必须在当月合法范围内
+- 2 月 29 日必须满足闰年规则
 
 例如：
 
-- `2000-2-29` 合法
 - `2016-2-29` 合法
 - `2017-2-29` 非法
+- `2017-21-29` 非法
+- `2017-12-32` 非法
+- `2017-11-31` 非法
 
-### 4.4 补齐 Value 对 DATES 的支持
+### 4.5 Value 层：让 DATES 真正能流动起来
 
-这是这道题最容易漏掉的部分。
+修改位置：
 
-虽然已经新增了 `DateType`，但如果 `Value` 不支持 `DATES`，那么 date 值在系统里仍然无法正确流动。
+- `src/observer/common/value.cpp`
 
-在 `src/observer/common/value.cpp` 中补了三处：
+这是这题特别容易漏掉的点。
 
-1. `set_data` 支持 `AttrType::DATES`
-2. `set_value` 支持 `AttrType::DATES`
-3. `get_int` 支持 `AttrType::DATES`
+虽然加了 `DateType`，但如果 `Value` 不支持 `DATES`，那 date 值仍然没法在系统里正常传递。  
+因此补齐了：
 
-作用：
+- `set_data` 对 `DATES` 的支持
+- `set_value` 对 `DATES` 的支持
+- `get_int` 对 `DATES` 的支持
 
-1. 记录中的 date 字段能正确读出
-2. 查询比较时能拿到真实日期整数
-3. 输出时能正确格式化
+这样记录中的 `date` 字段、比较表达式里的 `date` 值、最终输出时的 `date` 值，才能都走通。
 
-### 4.5 解决插入时的隐式转换
+### 4.6 类型转换：支持 CHARS -> DATES
 
-这是本题里最关键的实际 bug 点。
+修改位置：
 
-例如：
+- `src/observer/common/type/char_type.cpp`
+
+这一点非常关键。
+
+比如：
 
 ```sql
 INSERT INTO date_table VALUES (1, '2020-01-21');
 ```
 
-这里 `'2020-01-21'` 在 parser 看来先是 `CHARS`，不是 `DATES`。
-
-插入时系统会尝试把“字面量类型”转换成“字段类型”。因此必须支持：
+这里的 `'2020-01-21'` 在 parser 看来一开始是 `CHARS`，不是 `DATES`。  
+插入时系统会尝试把字面量类型转换成字段类型，所以必须支持：
 
 - `CHARS -> DATES`
 
-最终在 `src/observer/common/type/char_type.cpp` 中补了：
+因此补了：
 
-1. `CharType::cast_to` 支持转成 `DATES`
-2. `CharType::cast_cost` 支持到 `DATES` 的转换代价
+- `CharType::cast_to` 到 `DATES`
+- `CharType::cast_cost` 到 `DATES`
 
-没有这一步时，现象就是：
+没有这一步时，典型现象就是：
 
-1. `CREATE TABLE ... date` 成功
-2. 但是所有合法日期 `INSERT` 全部失败
+- `CREATE TABLE ... date` 成功
+- 但所有合法日期 `INSERT` 都失败
 
-### 4.6 处理比较时的转换方向
+### 4.7 比较和索引
 
-对于下面这种语句：
+比较方面：
+
+- 因为日期内部就是 `YYYYMMDD`
+- 所以大小比较直接按整数比较即可
+
+索引方面：
+
+- `date` 字段建立索引时，本质上也是按整数编码
+
+修改位置：
+
+- `src/observer/storage/common/codec.h`
+
+需要让 `Codec` 支持 `AttrType::DATES`，这样 `CREATE INDEX ... ON date_field` 才能稳定工作。
+
+## 5. 这道题的关键难点
+
+### 5.1 难点一：不是 parser 写完就结束
+
+这题最容易误判的地方是：
+
+- `date` 关键字识别成功了
+- `CREATE TABLE` 也成功了
+- 以为就做完了
+
+实际上真正难的是后面的：
+
+- 插入
+- 比较
+- 索引
+- 输出
+
+如果后面几层没补齐，`DATE` 只是“看起来存在”，并不能真正使用。
+
+### 5.2 难点二：类型转换
+
+题目思路里提到这题的难点在“和其他类型的交互”，这一点和实际实现完全一致。
+
+真正的难点不是日期本身，而是：
+
+- 字符串日期怎么转成 `DATE`
+- 比较时怎么决定谁转成谁
+- 插入和查询里都要走正确的转换方向
+
+### 5.3 难点三：非法输入的处理
+
+题目要求明确提到：
+
+- 非法 `date` 输入要返回 `FAILURE`
+
+所以不仅非法 `INSERT` 要失败，像：
 
 ```sql
-SELECT * FROM date_table WHERE u_date > '2020-1-20';
+SELECT * FROM date_table WHERE u_date='2017-2-29';
 ```
 
-左边字段是 `DATES`，右边字面量是 `CHARS`。
+这种非法日期条件输入，也应该失败。
 
-系统必须优先选择：
+这也是后期回归时最需要特别确认的点。
 
-- 把字符串转成 `DATE`
+## 6. 最终改动的核心文件
 
-而不是：
+- `src/observer/sql/parser/lex_sql.l`
+- `src/observer/sql/parser/yacc_sql.y`
+- `src/observer/common/type/attr_type.h`
+- `src/observer/common/type/attr_type.cpp`
+- `src/observer/common/type/data_type.h`
+- `src/observer/common/type/data_type.cpp`
+- `src/observer/common/type/date_type.h`
+- `src/observer/common/type/date_type.cpp`
+- `src/observer/common/type/char_type.cpp`
+- `src/observer/common/value.cpp`
+- `src/observer/storage/common/codec.h`
 
-- 把 `DATE` 字段转成字符串
+## 7. 手工验证要点
 
-所以需要通过 `cast_cost` 控制转换优先级，使比较逻辑走向正确。
-
-### 4.7 补齐索引编码
-
-公开测试里会先创建日期索引：
-
-```sql
-CREATE INDEX index_id ON date_table(u_date);
-```
-
-因此索引编码也必须支持 `DATES`。
-
-在 `src/observer/storage/common/codec.h` 中补充了：
-
-1. `Codec::encode_value` 支持 `AttrType::DATES`
-
-因为 date 内部本来就是整数编码，所以这里直接按整数编码即可。
-
-## 5. 关键细节和易错点
-
-### 5.1 不能只做 parser
-
-如果只改 parser，`CREATE TABLE` 可能成功，但插入、比较、索引都会出问题。
-
-### 5.2 不能把日期当普通字符串存
-
-如果直接存字符串：
-
-1. 比较逻辑更复杂
-2. 索引支持更麻烦
-3. 和 MiniOB 现有定长字段机制不够契合
-
-### 5.3 插入失败不一定是 DateType 本身错
-
-本题最容易误判的点是：日期解析已经写对了，但插入仍然失败。  
-真正原因可能是：
-
-1. `Value` 不支持 `DATES`
-2. `CHARS -> DATES` 隐式转换没接上
-3. 索引编码没支持 `DATES`
-
-### 5.4 合法日期与非法日期都要覆盖
-
-只验证“能插入”不够，还要验证“该失败时确实失败”。
-
-## 6. 手工测试内容
-
-### 6.1 建表和建索引
+### 7.1 建表和建索引
 
 ```sql
 CREATE TABLE date_table(id int, u_date date);
 CREATE INDEX index_id ON date_table(u_date);
 ```
 
-### 6.2 合法日期
+### 7.2 合法日期插入
 
 ```sql
 INSERT INTO date_table VALUES (1,'2020-01-21');
@@ -233,7 +265,7 @@ INSERT INTO date_table VALUES (8,'2000-01-01');
 INSERT INTO date_table VALUES (9,'2038-1-19');
 ```
 
-### 6.3 比较测试
+### 7.3 比较测试
 
 ```sql
 SELECT * FROM date_table WHERE u_date > '2020-1-20';
@@ -241,27 +273,21 @@ SELECT * FROM date_table WHERE u_date < '2019-12-31';
 SELECT * FROM date_table WHERE u_date = '2020-1-1';
 ```
 
-### 6.4 删除测试
+### 7.4 非法输入
 
 ```sql
-DELETE FROM date_table WHERE u_date > '2012-2-29';
-SELECT * FROM date_table;
-```
-
-### 6.5 非法日期
-
-```sql
+SELECT * FROM date_table WHERE u_date='2017-2-29';
 INSERT INTO date_table VALUES (10,'2017-2-29');
-INSERT INTO date_table VALUES (11,'2017-21-29');
-INSERT INTO date_table VALUES (12,'2017-12-32');
-INSERT INTO date_table VALUES (13,'2017-11-31');
 ```
 
-## 7. 最终结论
+验证点：
 
-这道题真正完成的内容是：
+- 都应该 `FAILURE`
 
-1. 为 MiniOB 新增了 `DATE` 类型
-2. 打通了从 SQL 解析到记录存储、索引、比较、输出的完整链路
-3. 通过日期合法性校验保证错误输入不会进入系统
-4. 通过整数编码保证比较与索引实现简洁可靠
+## 8. 汇报时可以怎么讲
+
+你可以把这题总结成三句：
+
+1. `date` 题不是简单加关键字，而是给 MiniOB 增加一种完整的数据类型。
+2. 我采用 `YYYYMMDD` 的整数编码，让日期的存储、比较和索引都能复用整数逻辑。
+3. 这题最难的部分其实是类型转换和非法输入处理，而不是日期解析本身。

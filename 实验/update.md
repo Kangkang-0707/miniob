@@ -1,197 +1,200 @@
 # update
 
-## 目标
+## 1. 题目目标
 
-支持：
+实现 `UPDATE` 功能，支持：
 
 ```sql
 UPDATE table_name SET col = value WHERE ...;
 ```
 
-并满足这些行为：
+并满足：
 
-- 更新单行和多行
+- 支持更新单行和多行
 - 支持无条件更新
-- 支持 `where` 多条件过滤
+- 支持 `WHERE` 过滤
 - 支持更新带索引的列
-- 表不存在、列不存在、条件列不存在时失败
-- 类型不匹配时失败
+- 表不存在、列不存在、类型不匹配时返回失败
 
-## 实现主线
+这道题的核心不是 parser，而是把“更新记录”安全接进 MiniOB 现有的事务、记录和索引体系。
 
-`update` 不是 DDL，而是 DML，所以要走完整的执行链路：
+## 2. 总体思路
 
-`stmt -> logical plan -> physical plan -> trx -> table engine`
+按照题目思路里的层次，这题需要走完整 DML 链路：
 
-这题真正难的地方，不是 parser，而是把“更新一条记录”接进现有存储和索引体系。
+`SQL -> Stmt -> Logical Plan -> Physical Plan -> Trx -> Table Engine`
 
-## 具体步骤
+也就是说，不能只停留在语法识别，还要真正把更新动作落到存储层。
 
-### 1. 实现 `UpdateStmt`
+## 3. 具体实现
 
-位置：
+### 3.1 Resolve 阶段：实现 UpdateStmt
+
+修改位置：
 
 - `src/observer/sql/stmt/update_stmt.h`
 - `src/observer/sql/stmt/update_stmt.cpp`
 
-这里做了 4 件事：
+主要负责：
 
-1. 检查目标表是否存在
-2. 检查更新列是否存在
-3. 把更新值强制转换成目标列类型
-4. 用 `FilterStmt` 解析 `where` 条件
+- 检查目标表是否存在
+- 检查更新列是否存在
+- 检查并解析 `WHERE` 条件
+- 把更新值转换成目标列类型
 
-这样可以提前挡住很多错误：
+这一层的作用很重要，因为很多错误应该在这里尽早挡住：
 
 - 更新不存在的列
-- 条件里写错列名
-- 把字符串塞进 `int` 列
+- 条件列写错
+- 把字符串赋给 `int`
 
-### 2. 在 `Stmt::create_stmt` 中接入 `SCF_UPDATE`
+### 3.2 Stmt 分发：接入 UPDATE
 
-位置：
+修改位置：
 
 - `src/observer/sql/stmt/stmt.cpp`
 
-让 SQL 能真正生成 `UpdateStmt`。
+把 `SCF_UPDATE` 接进 `Stmt::create_stmt`，让 SQL 能真正生成 `UpdateStmt`。
 
-### 3. 新增 `UpdateLogicalOperator`
+### 3.3 Logical Plan：新增 UpdateLogicalOperator
 
-位置：
+修改位置：
 
 - `src/observer/sql/operator/update_logical_operator.h`
 - `src/observer/sql/operator/update_logical_operator.cpp`
+- `src/observer/sql/optimizer/logical_plan_generator.cpp`
 
-作用：
+这里做的事情是：
 
 - 保存目标表
 - 保存目标字段
-- 保存更新值
+- 保存新的值
+- 在逻辑计划里形成：
 
-逻辑计划结构和 `delete` 很像：
+```text
+TableGet -> Predicate -> Update
+```
 
-1. 先 `TableGet`
-2. 再 `Predicate`
-3. 最后 `Update`
+如果没有 `WHERE`，就直接是：
 
-### 4. 在 `LogicalPlanGenerator` 中生成 `update` 计划
+```text
+TableGet -> Update
+```
 
-位置：
+### 3.4 Physical Plan：新增 UpdatePhysicalOperator
 
-- `src/observer/sql/optimizer/logical_plan_generator.h`
-- `src/observer/sql/optimizer/logical_plan_generator.cpp`
-
-这里复用了 `delete` 的模式：
-
-- `TableGetLogicalOperator(table, READ_WRITE)`
-- 条件存在时挂 `PredicateLogicalOperator`
-- 最上层挂 `UpdateLogicalOperator`
-
-### 5. 新增 `UpdatePhysicalOperator`
-
-位置：
+修改位置：
 
 - `src/observer/sql/operator/update_physical_operator.h`
 - `src/observer/sql/operator/update_physical_operator.cpp`
-
-作用：
-
-1. 先从子节点把所有满足条件的记录取出来
-2. 拷贝成独立 `Record`
-3. 在副本上修改目标字段
-4. 调用事务层 `trx->update_record(...)`
-
-这里特意先把记录复制出来，而不是直接拿扫描器当前页里的内存做更新，避免 child 关闭后记录指针失效。
-
-### 6. 在 `PhysicalPlanGenerator` 中接入
-
-位置：
-
-- `src/observer/sql/optimizer/physical_plan_generator.h`
 - `src/observer/sql/optimizer/physical_plan_generator.cpp`
 
-补充了：
+执行策略是：
 
-- `LogicalOperatorType::UPDATE`
-- `create_plan(UpdateLogicalOperator &, ...)`
+1. 从子节点扫描出所有满足条件的记录
+2. 复制出独立 `Record`
+3. 在副本上修改目标字段
+4. 调用事务层执行真正的更新
 
-### 7. 扩展算子类型枚举
+这里选择“先拷贝再修改”，而不是直接改扫描器当前记录，是为了避免 child 关闭或页切换后指针失效。
 
-位置：
+### 3.5 事务层：交给 update_record
 
-- `src/observer/sql/operator/logical_operator.h/.cpp`
-- `src/observer/sql/operator/physical_operator.h/.cpp`
+修改位置：
 
-补充：
+- `src/observer/storage/trx/vacuous_trx.h`
+- `src/observer/storage/trx/vacuous_trx.cpp`
+- `src/observer/storage/trx/mvcc_trx.h`
+- `src/observer/storage/trx/mvcc_trx.cpp`
 
-- `LogicalOperatorType::UPDATE`
-- `PhysicalOperatorType::UPDATE`
-
-并把 `update` 标记为“不能走向量化执行”的类型，和 `insert/delete` 保持一致。
-
-### 8. 实现事务层 `update_record`
-
-位置：
-
-- `src/observer/storage/trx/vacuous_trx.h/.cpp`
-- `src/observer/storage/trx/mvcc_trx.h/.cpp`
-
-目前做法是统一委托给：
+这一层主要做调度，把更新委托给表引擎：
 
 ```cpp
 table->update_record_with_trx(old_record, new_record, this)
 ```
 
-这样事务层只负责调度，真正的更新逻辑交给表引擎。
+这样事务层不直接关心索引细节，而是统一交给底层表引擎处理。
 
-### 9. 实现 `HeapTableEngine::update_record_with_trx`
+### 3.6 存储层：真正修改记录并维护索引
 
-位置：
+修改位置：
 
 - `src/observer/storage/table/heap_table_engine.h`
 - `src/observer/storage/table/heap_table_engine.cpp`
 
-这是整题最核心的部分。
+这是这道题最核心的实现。
 
-更新一条记录时，不能只改数据页，还要同时维护索引，所以流程是：
+更新一条记录不能只改数据页，还必须同步维护索引。  
+最终采用的流程是：
 
 1. 删除旧索引项
-2. 原地更新记录内容
+2. 更新记录内容
 3. 插入新索引项
 
-如果任一步失败，要回滚：
+如果中途失败，就执行回滚，保证：
 
-- 更新记录失败：把旧索引项补回去
-- 新索引插入失败：撤掉已插入的新索引项，恢复旧记录，再把旧索引补回去
+- 数据和索引一致
+- 不会出现“数据改了但索引还是旧的”这种问题
 
-这样能保证索引和数据的一致性。
+## 4. 这道题的关键难点
 
-## 关键细节
+### 4.1 难点一：更新不是简单覆盖内存
 
-### 为什么不能直接改扫描器里的当前记录
+很多人最开始会把更新理解成：
 
-因为扫描器返回的记录很多时候只是指向页内存的一个视图，child 关闭后这块内存引用就不稳定了。先复制一份 `Record` 更安全。
+- 找到记录
+- 改字段值
 
-### 为什么更新要按“删旧索引 -> 改记录 -> 加新索引”
+但实际数据库里不够，因为还涉及：
 
-因为索引是按字段值建的。字段值一旦变了，旧键和新键都要处理。
+- 索引维护
+- 事务接口
+- 失败回滚
 
-如果只改记录不改索引，就会出现：
+所以真正难的是“把更新接进整个存储流程”。
 
-- 数据已经变了
-- 索引还指向旧值
+### 4.2 难点二：带索引列的更新
 
-之后查索引就会错。
+如果更新的是带索引字段，例如：
 
-### 为什么字符串列要先清空再写入
+```sql
+UPDATE update_table SET num = 99 WHERE id = 1;
+```
 
-`char` 字段是定长的。如果新字符串更短，不先清零就会把旧尾巴残留下来。
+那就必须同步修改索引，否则后续查索引会错。  
+这也是为什么存储层要做“删旧索引 -> 改记录 -> 加新索引”的顺序。
 
-### 为什么要在 `UpdateStmt` 阶段做类型转换
+### 4.3 难点三：类型检查和同类型赋值
 
-这样错误可以尽早暴露，不用等走到存储层才报错，也更符合“语义检查”的职责划分。
+这题后期还踩过一个很典型的坑：
 
-## 手工验证建议
+- 合法的 `UPDATE update_table SET num = 99 WHERE id = 1;`
+- 居然也失败
+
+原因是更新值处理时把“同类型赋值”也一律丢进了 `cast_to`。  
+后来修正成：
+
+- 同类型直接赋值
+- 不同类型才尝试转换
+
+这样才恢复了合法 `UPDATE` 的正常行为。
+
+## 5. 最终改动的核心文件
+
+- `src/observer/sql/stmt/update_stmt.h`
+- `src/observer/sql/stmt/update_stmt.cpp`
+- `src/observer/sql/stmt/stmt.cpp`
+- `src/observer/sql/operator/update_logical_operator.h`
+- `src/observer/sql/operator/update_logical_operator.cpp`
+- `src/observer/sql/operator/update_physical_operator.h`
+- `src/observer/sql/operator/update_physical_operator.cpp`
+- `src/observer/sql/optimizer/logical_plan_generator.cpp`
+- `src/observer/sql/optimizer/physical_plan_generator.cpp`
+- `src/observer/storage/trx/vacuous_trx.cpp`
+- `src/observer/storage/trx/mvcc_trx.cpp`
+- `src/observer/storage/table/heap_table_engine.cpp`
+
+## 6. 手工验证要点
 
 ```sql
 CREATE TABLE update_table(id int, num int, name char(10));
@@ -213,10 +216,17 @@ UPDATE update_table SET not_exist = 1;
 UPDATE update_table SET num = 'abc';
 ```
 
-预期：
+验证点：
 
 - 合法更新成功
-- 带索引列更新成功
+- 带索引字段更新成功
 - 无条件更新成功
-- 不存在表/列时报错
-- 类型不匹配时报错
+- 非法表名 / 列名 / 类型不匹配时失败
+
+## 7. 汇报时可以怎么讲
+
+你可以把这题概括成三句：
+
+1. `update` 题真正难的是把更新动作接进事务、记录和索引体系，而不是 parser。
+2. 我把它接成了完整的 DML 执行链：`Stmt -> Plan -> Trx -> Table Engine`。
+3. 后期关键修复点是带索引字段的更新一致性，以及同类型赋值不应该误走类型转换。

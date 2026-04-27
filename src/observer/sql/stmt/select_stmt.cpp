@@ -90,6 +90,14 @@ RC normalize_comparison_expression(unique_ptr<Expression> &expr)
 
   unique_ptr<Expression> &left  = comparison_expr->left();
   unique_ptr<Expression> &right = comparison_expr->right();
+  if (comparison_expr->comp() == LIKE_OP || comparison_expr->comp() == NOT_LIKE_OP) {
+    if (left->value_type() != AttrType::CHARS || right->value_type() != AttrType::CHARS) {
+      LOG_WARN("like operator only supports char operands");
+      return RC::INVALID_ARGUMENT;
+    }
+    return RC::SUCCESS;
+  }
+
   if (left->value_type() == right->value_type()) {
     return RC::SUCCESS;
   }
