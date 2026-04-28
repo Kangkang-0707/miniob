@@ -202,6 +202,17 @@ RC UpdatePhysicalOperator::open(Trx *trx)
   }
 
   if (records_.empty()) {
+    for (const shared_ptr<ParsedSqlNode> &value_sub_query : value_sub_queries_) {
+      if (value_sub_query == nullptr) {
+        continue;
+      }
+      Value ignored_value;
+      rc = extract_single_value(table_->db(), value_sub_query, ignored_value);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to validate update sub query: %s", strrc(rc));
+        return rc;
+      }
+    }
     return RC::SUCCESS;
   }
 
