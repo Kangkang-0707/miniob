@@ -410,7 +410,7 @@ attr_def:
 nullability:
     /* empty */
     {
-      $$ = 0;
+      $$ = 1;
     }
     | NULL_T
     {
