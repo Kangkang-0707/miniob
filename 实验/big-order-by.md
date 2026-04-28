@@ -143,9 +143,9 @@ vector<OrderBySqlNode> order_by;
 1. `open()` 打开子算子。
 2. 不断调用子算子 `next()` 读取所有 tuple。
 3. 对每一行：
-   - 先计算所有排序 key。
-   - 再用 `ValueListTuple::make` 把子 tuple 物化下来。
-4. 使用 `stable_sort` 按 key 列表逐个比较。
+   - 第一次读取时记录子 tuple 的 schema，并把 order-by 字段映射成 cell 下标。
+   - 后续每行只物化 cell 值，不为每行重复保存 schema，也不额外复制一份排序 key。
+4. 使用 `stable_sort` 按 order-by 下标逐个比较。
 5. `next()` 按排序后的数组顺序返回。
 
 比较逻辑：
@@ -182,7 +182,7 @@ vector<OrderBySqlNode> order_by;
 
 老师问“你怎么实现 order by 的？”
 
-可以回答：我从 parser 到执行链路补了一个独立排序算子。parser 解析 `ORDER BY 字段 [ASC|DESC]` 列表，AST 保存字段和方向；`SelectStmt` 阶段用 binder 把字段绑定成 `FieldExpr`；逻辑计划在 project 之前插入 `OrderByLogicalOperator`；物理计划用 `OrderByPhysicalOperator` 一次性读取子算子的所有 tuple，计算排序 key 后 `stable_sort`，再按排序后的顺序返回。
+可以回答：我从 parser 到执行链路补了一个独立排序算子。parser 解析 `ORDER BY 字段 [ASC|DESC]` 列表，AST 保存字段和方向；`SelectStmt` 阶段用 binder 把字段绑定成 `FieldExpr`；逻辑计划在 project 之前插入 `OrderByLogicalOperator`；物理计划用 `OrderByPhysicalOperator` 一次性读取子算子的所有 tuple，按 order-by 字段对应的 cell 下标 `stable_sort`，再按排序后的顺序返回。
 
 老师问“为什么 order by 放在 project 前面？”
 
@@ -190,7 +190,7 @@ vector<OrderBySqlNode> order_by;
 
 老师问“多字段升降序怎么处理？”
 
-可以回答：每一行保存一组 key，比较时从第一个 key 开始；相等则看下一个 key。每个 key 对应一个 `asc` 标记，升序用 `Value::compare < 0`，降序用 `> 0`。
+可以回答：第一次读取 tuple 时把 order-by 字段映射成 cell 下标，每一行只保存真实 cells。比较时从第一个下标开始；相等则看下一个下标。每个下标对应一个 `asc` 标记，升序用 `Value::compare < 0`，降序用 `> 0`。这样 hard 场景下不会为每行重复保存 schema 和排序 key。
 
 老师问“有没有影响之前题目？”
 

@@ -29,17 +29,34 @@ public:
   RC     tuple_schema(TupleSchema &schema) const override;
 
 private:
-  struct SortRow
+  class StoredTuple : public Tuple
   {
-    ValueListTuple tuple;
-    vector<Value>  keys;
+  public:
+    void set_specs(const vector<TupleCellSpec> *specs) { specs_ = specs; }
+    void add_cell(Value &&value) { cells_.emplace_back(std::move(value)); }
+
+    int cell_num() const override { return static_cast<int>(cells_.size()); }
+    RC  cell_at(int index, Value &cell) const override;
+    RC  spec_at(int index, TupleCellSpec &spec) const override;
+    RC  find_cell(const TupleCellSpec &spec, Value &cell) const override;
+
+    const Value &cell(int index) const { return cells_[index]; }
+
+  private:
+    vector<Value>                cells_;
+    const vector<TupleCellSpec> *specs_ = nullptr;
   };
 
-  bool less_than(const SortRow &left, const SortRow &right) const;
+  bool less_than(const StoredTuple &left, const StoredTuple &right) const;
+  RC   make_stored_tuple(const Tuple &tuple, StoredTuple &stored_tuple);
+  RC   init_schema_and_order_indexes(const Tuple &tuple);
 
 private:
   vector<unique_ptr<Expression>> order_by_exprs_;
   vector<bool>                   order_ascs_;
-  vector<SortRow>                rows_;
+  vector<int>                    order_cell_indexes_;
+  vector<TupleCellSpec>          specs_;
+  vector<StoredTuple>            rows_;
   size_t                         current_ = 0;
+  bool                           schema_inited_ = false;
 };
