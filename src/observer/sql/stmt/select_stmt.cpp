@@ -467,6 +467,27 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
   }
 
+  vector<unique_ptr<Expression>> order_by_expressions;
+  vector<bool>                   order_ascs;
+  for (const OrderBySqlNode &order_by : select_sql.order_by) {
+    unique_ptr<Expression> expression(
+        new UnboundFieldExpr(order_by.attr.relation_name, order_by.attr.attribute_name));
+    vector<unique_ptr<Expression>> bound_order_by;
+    RC rc = expression_binder.bind_expression(expression, bound_order_by);
+    if (OB_FAIL(rc)) {
+      LOG_INFO("bind order by expression failed. rc=%s", strrc(rc));
+      return rc;
+    }
+
+    if (bound_order_by.size() != 1) {
+      LOG_WARN("order by expression should bind to exactly one field, but got %d", static_cast<int>(bound_order_by.size()));
+      return RC::INVALID_ARGUMENT;
+    }
+
+    order_by_expressions.emplace_back(std::move(bound_order_by.front()));
+    order_ascs.push_back(order_by.asc);
+  }
+
   unique_ptr<Expression> predicate_expr;
   RC                     rc = build_predicate_expression(db, select_sql.conditions, predicate_expr);
   if (OB_FAIL(rc)) {
@@ -500,6 +521,8 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->query_expressions_.swap(bound_expressions);
   select_stmt->predicate_expr_ = std::move(predicate_expr);
   select_stmt->group_by_.swap(group_by_expressions);
+  select_stmt->order_by_.swap(order_by_expressions);
+  select_stmt->order_ascs_.swap(order_ascs);
   stmt = select_stmt;
   return RC::SUCCESS;
 }

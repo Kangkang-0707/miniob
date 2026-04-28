@@ -68,6 +68,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         CREATE
         DROP
         GROUP
+        ORDER
         TABLE
         TABLES
         INDEX
@@ -126,6 +127,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         GE
         NE
         DATE_T
+        ASC
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -142,6 +144,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   vector<ConditionSqlNode> *                 condition_list;
   UpdateValueSqlNode *                       update_value;
   vector<UpdateValueSqlNode> *               update_value_list;
+  OrderBySqlNode *                           order_by;
+  vector<OrderBySqlNode> *                   order_by_list;
   vector<RelAttrSqlNode> *                   rel_attr_list;
   vector<string> *                           relation_list;
   RelationSqlNode *                          relation_sql;
@@ -161,6 +165,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %destructor { delete $$; } <condition_list>
 %destructor { delete $$; } <update_value>
 %destructor { delete $$; } <update_value_list>
+%destructor { delete $$; } <order_by>
+%destructor { delete $$; } <order_by_list>
 // %destructor { delete $$; } <rel_attr_list>
 %destructor { delete $$; } <relation_list>
 %destructor { delete $$; } <relation_sql>
@@ -198,6 +204,9 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   %type <expression_list>     expression_list
   %type <expression_list>     aggregate_argument_list
 %type <expression_list>     group_by
+%type <order_by>            order_by_item
+%type <order_by_list>       order_by
+%type <order_by_list>       order_by_list
 %type <cstring>             fields_terminated_by
 %type <cstring>             enclosed_by
 %type <sql_node>            calc_stmt
@@ -573,7 +582,7 @@ update_value:
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM from_clause where group_by
+    SELECT expression_list FROM from_clause where group_by order_by
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -598,6 +607,11 @@ select_stmt:        /*  select 语句的语法解析树*/
       if ($6 != nullptr) {
         $$->selection.group_by.swap(*$6);
         delete $6;
+      }
+
+      if ($7 != nullptr) {
+        $$->selection.order_by.swap(*$7);
+        delete $7;
       }
     }
     ;
@@ -953,6 +967,60 @@ group_by:
       // group by 的表达式范围与select查询值的表达式范围是不同的，比如group by不支持 *
       // 但是这里没有处理。
       $$ = $3;
+    }
+    ;
+
+order_by:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | ORDER BY order_by_list
+    {
+      $$ = $3;
+    }
+    ;
+
+order_by_list:
+    order_by_item
+    {
+      $$ = new vector<OrderBySqlNode>;
+      $$->push_back(*$1);
+      delete $1;
+    }
+    | order_by_item COMMA order_by_list
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new vector<OrderBySqlNode>;
+      }
+      $$->insert($$->begin(), *$1);
+      delete $1;
+    }
+    ;
+
+order_by_item:
+    rel_attr
+    {
+      $$ = new OrderBySqlNode;
+      $$->attr = *$1;
+      $$->asc = true;
+      delete $1;
+    }
+    | rel_attr ASC
+    {
+      $$ = new OrderBySqlNode;
+      $$->attr = *$1;
+      $$->asc = true;
+      delete $1;
+    }
+    | rel_attr DESC
+    {
+      $$ = new OrderBySqlNode;
+      $$->attr = *$1;
+      $$->asc = false;
+      delete $1;
     }
     ;
 load_data_stmt:

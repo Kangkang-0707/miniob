@@ -128,7 +128,7 @@ CREATE TABLE date_table(id int, u_date date);
 
 这是这题特别容易漏掉的点。
 
-虽然加了 `DateType`，但如果 `Value` 不支持 `DATES`，那 date 值仍然没法在系统里正常传递。  
+虽然加了 `DateType`，但如果 `Value` 不支持 `DATES`，那 date 值仍然没法在系统里正常传递。
 因此补齐了：
 
 - `set_data` 对 `DATES` 的支持
@@ -151,7 +151,7 @@ CREATE TABLE date_table(id int, u_date date);
 INSERT INTO date_table VALUES (1, '2020-01-21');
 ```
 
-这里的 `'2020-01-21'` 在 parser 看来一开始是 `CHARS`，不是 `DATES`。  
+这里的 `'2020-01-21'` 在 parser 看来一开始是 `CHARS`，不是 `DATES`。
 插入时系统会尝试把字面量类型转换成字段类型，所以必须支持：
 
 - `CHARS -> DATES`

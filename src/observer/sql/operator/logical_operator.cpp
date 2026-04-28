@@ -22,7 +22,8 @@ bool LogicalOperator::can_generate_vectorized_operator(const LogicalOperatorType
     case LogicalOperatorType::CALC:
     case LogicalOperatorType::DELETE:
     case LogicalOperatorType::INSERT:
-    case LogicalOperatorType::UPDATE: return false;
+    case LogicalOperatorType::UPDATE:
+    case LogicalOperatorType::ORDER_BY: return false;
     default: return true;
   }
 }

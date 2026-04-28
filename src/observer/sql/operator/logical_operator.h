@@ -35,6 +35,7 @@ enum class LogicalOperatorType
   UPDATE,
   EXPLAIN,
   GROUP_BY,
+  ORDER_BY,
 };
 
 class LogicalOperator : public OperatorNode

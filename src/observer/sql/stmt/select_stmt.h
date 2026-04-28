@@ -43,10 +43,14 @@ public:
 
   vector<unique_ptr<Expression>> &query_expressions() { return query_expressions_; }
   vector<unique_ptr<Expression>> &group_by() { return group_by_; }
+  vector<unique_ptr<Expression>> &order_by() { return order_by_; }
+  vector<bool>                   &order_ascs() { return order_ascs_; }
 
 private:
   vector<unique_ptr<Expression>> query_expressions_;
   vector<Table *>                tables_;
   unique_ptr<Expression>         predicate_expr_;
   vector<unique_ptr<Expression>> group_by_;
+  vector<unique_ptr<Expression>> order_by_;
+  vector<bool>                   order_ascs_;
 };

@@ -102,7 +102,7 @@ SELECT * FROM like_table WHERE name NOT LIKE 'a%';
 - 要求左右两边都必须是 `AttrType::CHARS`
 - 否则直接返回 `INVALID_ARGUMENT`
 
-这个限制非常重要，因为题目只要求 `char` 类型支持 `LIKE`。  
+这个限制非常重要，因为题目只要求 `char` 类型支持 `LIKE`。
 如果这里把 `int/float/date` 也放进来做隐式转换，虽然看起来“更智能”，但很容易破坏前面已经通过的比较与类型转换行为。
 
 所以这里故意收得很紧。
@@ -111,7 +111,7 @@ SELECT * FROM like_table WHERE name NOT LIKE 'a%';
 
 ### 4.1 难点一：不要把 LIKE 做成新的特殊分支系统
 
-如果单独再搞一套 `like` 过滤逻辑，容易把代码改散。  
+如果单独再搞一套 `like` 过滤逻辑，容易把代码改散。
 这题更好的方式是直接复用 `ComparisonExpr`，只把 `LIKE` 当成新的比较操作。
 
 这样：
@@ -122,7 +122,7 @@ SELECT * FROM like_table WHERE name NOT LIKE 'a%';
 
 ### 4.2 难点二：类型范围必须收紧
 
-在前面的 `join-tables` 和 `simple-sub-query` 里，我们已经因为类型转换过宽踩过坑。  
+在前面的 `join-tables` 和 `simple-sub-query` 里，我们已经因为类型转换过宽踩过坑。
 所以这题不能再犯同样的问题。
 
 尤其是：
@@ -145,7 +145,7 @@ SELECT * FROM like_table WHERE id LIKE '1%';
 - `%` 是任意长度匹配
 - `_` 是单字符匹配
 
-所以需要一套稳定的模式匹配逻辑。  
+所以需要一套稳定的模式匹配逻辑。
 这里最后用的是“SQL 模式转正则”的实现，代码量小，也比较直观。
 
 ## 5. 手工验证

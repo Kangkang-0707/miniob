@@ -124,7 +124,7 @@ table->update_record_with_trx(old_record, new_record, this)
 
 这是这道题最核心的实现。
 
-更新一条记录不能只改数据页，还必须同步维护索引。  
+更新一条记录不能只改数据页，还必须同步维护索引。
 最终采用的流程是：
 
 1. 删除旧索引项
@@ -161,7 +161,7 @@ table->update_record_with_trx(old_record, new_record, this)
 UPDATE update_table SET num = 99 WHERE id = 1;
 ```
 
-那就必须同步修改索引，否则后续查索引会错。  
+那就必须同步修改索引，否则后续查索引会错。
 这也是为什么存储层要做“删旧索引 -> 改记录 -> 加新索引”的顺序。
 
 ### 4.3 难点三：类型检查和同类型赋值
@@ -171,7 +171,7 @@ UPDATE update_table SET num = 99 WHERE id = 1;
 - 合法的 `UPDATE update_table SET num = 99 WHERE id = 1;`
 - 居然也失败
 
-原因是更新值处理时把“同类型赋值”也一律丢进了 `cast_to`。  
+原因是更新值处理时把“同类型赋值”也一律丢进了 `cast_to`。
 后来修正成：
 
 - 同类型直接赋值
