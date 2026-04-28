@@ -37,6 +37,10 @@ int FloatType::compare(const Column &left, const Column &right, int left_idx, in
 RC FloatType::cast_to(const Value &val, AttrType type, Value &result) const
 {
   switch (type) {
+    case AttrType::INTS: {
+      result.set_int(val.get_int());
+      return RC::SUCCESS;
+    }
     case AttrType::CHARS: {
       stringstream ss;
       ss << common::double_to_str(val.get_float());
