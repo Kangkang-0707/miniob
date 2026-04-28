@@ -148,13 +148,22 @@ struct DeleteSqlNode
  * @brief 描述一个update语句
  * @ingroup SQLParser
  */
+struct UpdateValueSqlNode
+{
+  string                    attribute_name;
+  Value                     value;
+  int                       value_is_sub_query = 0;
+  shared_ptr<ParsedSqlNode> value_sub_query;
+};
+
 struct UpdateSqlNode
 {
-  string                   relation_name;   ///< Relation to update
-  string                   attribute_name;  ///< 更新的字段，仅支持一个字段
-  Value                    value;           ///< 更新的值，仅支持一个字段
-  int                      value_is_sub_query = 0;
-  shared_ptr<ParsedSqlNode> value_sub_query;
+  string                     relation_name;   ///< Relation to update
+  string                     attribute_name;  ///< first updated field, kept for compatibility
+  Value                      value;           ///< first updated value, kept for compatibility
+  int                        value_is_sub_query = 0;
+  shared_ptr<ParsedSqlNode>  value_sub_query;
+  vector<UpdateValueSqlNode> update_values;
   vector<ConditionSqlNode> conditions;
 };
 

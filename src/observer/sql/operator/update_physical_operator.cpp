@@ -139,6 +139,21 @@ RC extract_single_value(Db *db, shared_ptr<ParsedSqlNode> sub_query_sql, Value &
 UpdatePhysicalOperator::UpdatePhysicalOperator(
     Table *table, const FieldMeta *field_meta, const Value &value, shared_ptr<ParsedSqlNode> value_sub_query)
     : table_(table), field_meta_(field_meta), value_(value), value_sub_query_(std::move(value_sub_query))
+{
+  field_metas_.emplace_back(field_meta_);
+  values_.emplace_back(value_);
+  value_sub_queries_.emplace_back(value_sub_query_);
+}
+
+UpdatePhysicalOperator::UpdatePhysicalOperator(Table *table, vector<const FieldMeta *> field_metas, vector<Value> values,
+    vector<shared_ptr<ParsedSqlNode>> value_sub_queries)
+    : table_(table),
+      field_meta_(field_metas.empty() ? nullptr : field_metas.front()),
+      value_(values.empty() ? Value() : values.front()),
+      value_sub_query_(value_sub_queries.empty() ? nullptr : value_sub_queries.front()),
+      field_metas_(std::move(field_metas)),
+      values_(std::move(values)),
+      value_sub_queries_(std::move(value_sub_queries))
 {}
 
 RC UpdatePhysicalOperator::open(Trx *trx)
@@ -186,28 +201,33 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     return rc;
   }
 
-  Value resolved_value;
-  rc = resolve_value(resolved_value);
+  if (records_.empty()) {
+    return RC::SUCCESS;
+  }
+
+  vector<Value> resolved_values;
+  rc = resolve_values(resolved_values);
   if (OB_FAIL(rc)) {
     LOG_WARN("failed to resolve update value: %s", strrc(rc));
     return rc;
   }
 
-  value_ = resolved_value;
-
   vector<pair<Record, Record>> applied_records;
   for (Record &old_record : records_) {
     Record new_record(old_record);
-    rc = apply_value(new_record);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to apply update value: %s", strrc(rc));
-      for (auto iter = applied_records.rbegin(); iter != applied_records.rend(); ++iter) {
-        RC rc2 = trx_->update_record(table_, iter->second, iter->first);
-        if (OB_FAIL(rc2)) {
-          LOG_PANIC("failed to rollback updated record: %s", strrc(rc2));
+
+    for (size_t i = 0; i < field_metas_.size(); i++) {
+      rc = apply_value(new_record, field_metas_[i], resolved_values[i]);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to apply update value: %s", strrc(rc));
+        for (auto iter = applied_records.rbegin(); iter != applied_records.rend(); ++iter) {
+          RC rc2 = trx_->update_record(table_, iter->second, iter->first);
+          if (OB_FAIL(rc2)) {
+            LOG_PANIC("failed to rollback updated record: %s", strrc(rc2));
+          }
         }
+        return rc;
       }
-      return rc;
     }
 
     rc = trx_->update_record(table_, old_record, new_record);
@@ -239,9 +259,9 @@ RC UpdatePhysicalOperator::close()
   return RC::SUCCESS;
 }
 
-RC UpdatePhysicalOperator::apply_value(Record &record) const
+RC UpdatePhysicalOperator::apply_value(Record &record, const FieldMeta *field_meta, const Value &value) const
 {
-  if (record.data() == nullptr || field_meta_ == nullptr) {
+  if (record.data() == nullptr || field_meta == nullptr) {
     return RC::INVALID_ARGUMENT;
   }
 
@@ -250,19 +270,19 @@ RC UpdatePhysicalOperator::apply_value(Record &record) const
   unsigned char mask = 0;
   if (table_->table_meta().null_bitmap_size() > 0) {
     bitmap = record.data() + table_->table_meta().null_bitmap_offset();
-    byte_idx = field_meta_->field_id() / 8;
-    const int bit_idx = field_meta_->field_id() % 8;
+    byte_idx = field_meta->field_id() / 8;
+    const int bit_idx = field_meta->field_id() % 8;
     mask = static_cast<unsigned char>(1U << bit_idx);
   }
 
-  if (value_.is_null()) {
-    if (!field_meta_->nullable()) {
+  if (value.is_null()) {
+    if (!field_meta->nullable()) {
       return RC::INVALID_ARGUMENT;
     }
     if (bitmap != nullptr) {
       bitmap[byte_idx] = static_cast<char>(static_cast<unsigned char>(bitmap[byte_idx]) | mask);
     }
-    memset(record.data() + field_meta_->offset(), 0, field_meta_->len());
+    memset(record.data() + field_meta->offset(), 0, field_meta->len());
     return RC::SUCCESS;
   }
 
@@ -270,48 +290,58 @@ RC UpdatePhysicalOperator::apply_value(Record &record) const
     bitmap[byte_idx] = static_cast<char>(static_cast<unsigned char>(bitmap[byte_idx]) & ~mask);
   }
 
-  char       *target   = record.data() + field_meta_->offset();
-  const size_t field_len = field_meta_->len();
+  char       *target   = record.data() + field_meta->offset();
+  const size_t field_len = field_meta->len();
   size_t       copy_len  = field_len;
 
-  if (field_meta_->type() == AttrType::CHARS) {
+  if (field_meta->type() == AttrType::CHARS) {
     memset(target, 0, field_len);
-    copy_len = std::min(field_len, static_cast<size_t>(value_.length() + 1));
+    copy_len = std::min(field_len, static_cast<size_t>(value.length() + 1));
   }
 
-  memcpy(target, value_.data(), copy_len);
+  memcpy(target, value.data(), copy_len);
   return RC::SUCCESS;
 }
 
-RC UpdatePhysicalOperator::resolve_value(Value &value) const
+RC UpdatePhysicalOperator::resolve_values(vector<Value> &values) const
 {
-  if (value_sub_query_ == nullptr) {
-    value = value_;
-    return RC::SUCCESS;
+  if (field_metas_.size() != values_.size() || field_metas_.size() != value_sub_queries_.size()) {
+    return RC::INVALID_ARGUMENT;
   }
 
-  RC rc = extract_single_value(table_->db(), value_sub_query_, value);
-  if (OB_FAIL(rc)) {
-    return rc;
-  }
+  values.clear();
+  values.reserve(values_.size());
 
-  if (value.is_null()) {
-    if (!field_meta_->nullable()) {
-      return RC::INVALID_ARGUMENT;
+  for (size_t i = 0; i < values_.size(); i++) {
+    const FieldMeta *field_meta = field_metas_[i];
+    Value value;
+    if (value_sub_queries_[i] == nullptr) {
+      value = values_[i];
+    } else {
+      RC rc = extract_single_value(table_->db(), value_sub_queries_[i], value);
+      if (OB_FAIL(rc)) {
+        return rc;
+      }
     }
-    value.set_null(field_meta_->type());
-    return RC::SUCCESS;
-  }
 
-  if (value.attr_type() == field_meta_->type()) {
-    return RC::SUCCESS;
-  }
+    if (value.is_null()) {
+      if (!field_meta->nullable()) {
+        return RC::INVALID_ARGUMENT;
+      }
+      value.set_null(field_meta->type());
+      values.emplace_back(value);
+      continue;
+    }
 
-  Value cast_value;
-  rc = Value::cast_to(value, field_meta_->type(), cast_value);
-  if (OB_FAIL(rc)) {
-    return rc;
+    if (value.attr_type() != field_meta->type()) {
+      Value cast_value;
+      RC rc = Value::cast_to(value, field_meta->type(), cast_value);
+      if (OB_FAIL(rc)) {
+        return rc;
+      }
+      value = cast_value;
+    }
+    values.emplace_back(value);
   }
-  value = cast_value;
   return RC::SUCCESS;
 }

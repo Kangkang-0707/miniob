@@ -24,6 +24,8 @@ class UpdatePhysicalOperator : public PhysicalOperator
 public:
   UpdatePhysicalOperator(
       Table *table, const FieldMeta *field_meta, const Value &value, shared_ptr<ParsedSqlNode> value_sub_query);
+  UpdatePhysicalOperator(Table *table, vector<const FieldMeta *> field_metas, vector<Value> values,
+      vector<shared_ptr<ParsedSqlNode>> value_sub_queries);
   ~UpdatePhysicalOperator() override = default;
 
   PhysicalOperatorType type() const override { return PhysicalOperatorType::UPDATE; }
@@ -36,14 +38,17 @@ public:
   Tuple *current_tuple() override { return nullptr; }
 
 private:
-  RC apply_value(Record &record) const;
-  RC resolve_value(Value &value) const;
+  RC apply_value(Record &record, const FieldMeta *field_meta, const Value &value) const;
+  RC resolve_values(vector<Value> &values) const;
 
 private:
   Table              *table_      = nullptr;
   const FieldMeta    *field_meta_ = nullptr;
   Value               value_;
   shared_ptr<ParsedSqlNode> value_sub_query_;
+  vector<const FieldMeta *> field_metas_;
+  vector<Value> values_;
+  vector<shared_ptr<ParsedSqlNode>> value_sub_queries_;
   Trx                *trx_        = nullptr;
   vector<Record>      records_;
 };

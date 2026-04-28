@@ -140,6 +140,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   vector<unique_ptr<Expression>> *           expression_list;
   vector<Value> *                            value_list;
   vector<ConditionSqlNode> *                 condition_list;
+  UpdateValueSqlNode *                       update_value;
+  vector<UpdateValueSqlNode> *               update_value_list;
   vector<RelAttrSqlNode> *                   rel_attr_list;
   vector<string> *                           relation_list;
   RelationSqlNode *                          relation_sql;
@@ -157,6 +159,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %destructor { delete $$; } <expression_list>
 %destructor { delete $$; } <value_list>
 %destructor { delete $$; } <condition_list>
+%destructor { delete $$; } <update_value>
+%destructor { delete $$; } <update_value_list>
 // %destructor { delete $$; } <rel_attr_list>
 %destructor { delete $$; } <relation_list>
 %destructor { delete $$; } <relation_sql>
@@ -182,6 +186,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <value_list>          value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
+%type <update_value>        update_value
+%type <update_value_list>   update_value_list
 %type <cstring>             storage_format
 %type <key_list>            primary_key
 %type <key_list>            attr_list
@@ -516,29 +522,54 @@ delete_stmt:    /*  delete 语句的语法解析树*/
       }
     }
     ;
-update_stmt:      /*  update 语句的语法解析树*/
-    UPDATE ID SET ID EQ value where
+update_stmt:      /*  update ????????*/
+    UPDATE ID SET update_value_list where
     {
       $$ = new ParsedSqlNode(SCF_UPDATE);
       $$->update.relation_name = $2;
-      $$->update.attribute_name = $4;
-      $$->update.value = *$6;
-      if ($7 != nullptr) {
-        $$->update.conditions.swap(*$7);
-        delete $7;
+      $$->update.update_values.swap(*$4);
+      if (!$$->update.update_values.empty()) {
+        const UpdateValueSqlNode &first_value = $$->update.update_values.front();
+        $$->update.attribute_name = first_value.attribute_name;
+        $$->update.value = first_value.value;
+        $$->update.value_is_sub_query = first_value.value_is_sub_query;
+        $$->update.value_sub_query = first_value.value_sub_query;
+      }
+      delete $4;
+      if ($5 != nullptr) {
+        $$->update.conditions.swap(*$5);
+        delete $5;
       }
     }
-    | UPDATE ID SET ID EQ sub_query where
+    ;
+update_value_list:
+    update_value
     {
-      $$ = new ParsedSqlNode(SCF_UPDATE);
-      $$->update.relation_name = $2;
-      $$->update.attribute_name = $4;
-      $$->update.value_is_sub_query = 1;
-      $$->update.value_sub_query.reset($6);
-      if ($7 != nullptr) {
-        $$->update.conditions.swap(*$7);
-        delete $7;
-      }
+      $$ = new vector<UpdateValueSqlNode>;
+      $$->emplace_back(*$1);
+      delete $1;
+    }
+    | update_value_list COMMA update_value
+    {
+      $$ = $1;
+      $$->emplace_back(*$3);
+      delete $3;
+    }
+    ;
+update_value:
+    ID EQ value
+    {
+      $$ = new UpdateValueSqlNode;
+      $$->attribute_name = $1;
+      $$->value = *$3;
+      delete $3;
+    }
+    | ID EQ sub_query
+    {
+      $$ = new UpdateValueSqlNode;
+      $$->attribute_name = $1;
+      $$->value_is_sub_query = 1;
+      $$->value_sub_query.reset($3);
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
