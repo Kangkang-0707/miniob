@@ -134,6 +134,23 @@ RC extract_single_value(Db *db, shared_ptr<ParsedSqlNode> sub_query_sql, Value &
   return rows[0].cell_at(0, value);
 }
 
+RC validate_sub_query(Db *db, shared_ptr<ParsedSqlNode> sub_query_sql)
+{
+  if (sub_query_sql == nullptr || sub_query_sql->flag != SCF_SELECT ||
+      sub_query_sql->selection.expressions.size() != 1) {
+    return RC::INVALID_ARGUMENT;
+  }
+
+  Stmt *sub_stmt_raw = nullptr;
+  RC    rc           = SelectStmt::create(db, sub_query_sql->selection, sub_stmt_raw);
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+
+  delete sub_stmt_raw;
+  return RC::SUCCESS;
+}
+
 } // namespace
 
 UpdatePhysicalOperator::UpdatePhysicalOperator(
@@ -206,8 +223,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       if (value_sub_query == nullptr) {
         continue;
       }
-      Value ignored_value;
-      rc = extract_single_value(table_->db(), value_sub_query, ignored_value);
+      rc = validate_sub_query(table_->db(), value_sub_query);
       if (OB_FAIL(rc)) {
         LOG_WARN("failed to validate update sub query: %s", strrc(rc));
         return rc;
